@@ -9,7 +9,7 @@
 - Zero-build setup: just serve the static files and the app runs in modern browsers.
 
 ## Project Structure
-- `41weather.html` – main page markup and script includes.
+- `index.html` – main page markup and script includes.
 - `styles.css` – dark theme styling for layout, cards, tables, and responsive tweaks.
 - `app.js` – application logic (API calls, data aggregation, rendering).
 - `api.md` – notes on the reverse-engineered MeteoAM meteogram API.
@@ -23,7 +23,7 @@
    # Node.js (with http-server)
    npx http-server .
    ```
-2. Open `http://localhost:8000/41weather.html` in your browser.
+2. Open `http://localhost:8000/` (or `http://localhost:8000/index.html`) in your browser.
 3. Use the search box to find a city or click `Pesaro` for the default location.
 
 > Note: Directly opening the HTML file from disk (`file://`) may block `fetch` in some browsers. Prefer a local server.
@@ -43,4 +43,4 @@ See `api.md` for the detailed reverse-engineering notes captured during developm
 - Weather icons are generated on the fly by mapping MeteoAM codes to emoji and inlining them as SVG data URIs.
 
 ## License
-No license specified. Add one if you plan to distribute or open-source the project.
+Released under the [MIT License](LICENSE).
