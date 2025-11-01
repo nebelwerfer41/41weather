@@ -10,7 +10,7 @@ const mm = v => (v == null ? 0 : Math.round(Number(v) * 10) / 10);
 
 // ---------- State ----------
 let state = {
-    lat: 43.894039, lon: 12.88441, name: 'Pesaro, IT', tz: 'Europe/Rome', elev: null, chart: null,
+    lat: 41.902783, lon: 12.496366, name: 'Roma, IT', tz: 'Europe/Rome', elev: null, chart: null,
     hourlyData: null, dailyData: null, expandedDay: null
 };
 
@@ -336,10 +336,9 @@ document.getElementById('q').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') performSearch();
 });
 
-document.getElementById('usePesaro').addEventListener('click', () => {
-    loadAll('Pesaro, IT', 43.894039, 12.88441);
+document.getElementById('useRome').addEventListener('click', () => {
+    loadAll('Roma, IT', 41.902783, 12.496366);
 });
 
 // ---------- First load ----------
-loadAll('Pesaro, IT', 43.894039, 12.88441);
-
+loadAll('Roma, IT', 41.902783, 12.496366);
