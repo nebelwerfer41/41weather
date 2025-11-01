@@ -9,8 +9,10 @@ const fmtTime = (iso, tz) => new Date(iso).toLocaleString('it-IT', { timeZone: t
 const mm = v => (v == null ? 0 : Math.round(Number(v) * 10) / 10);
 
 // ---------- State ----------
+const DEFAULT_LOCATION = { name: 'Roma, IT', lat: 41.902783, lon: 12.496366, tz: 'Europe/Rome' };
+
 let state = {
-    lat: 41.902783, lon: 12.496366, name: 'Roma, IT', tz: 'Europe/Rome', elev: null, chart: null,
+    lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon, name: DEFAULT_LOCATION.name, tz: DEFAULT_LOCATION.tz, elev: null, chart: null,
     hourlyData: null, dailyData: null, expandedDay: null
 };
 
@@ -330,15 +332,25 @@ async function performSearch() {
     }
 }
 
-document.getElementById('searchBtn').addEventListener('click', performSearch);
+function init() {
+    document.getElementById('searchBtn').addEventListener('click', performSearch);
 
-document.getElementById('q').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') performSearch();
-});
+    document.getElementById('q').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
 
-document.getElementById('useRome').addEventListener('click', () => {
-    loadAll('Roma, IT', 41.902783, 12.496366);
-});
+    const quickBtn = document.getElementById('useRome');
+    if (quickBtn) {
+        quickBtn.addEventListener('click', () => {
+            loadAll(DEFAULT_LOCATION.name, DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon);
+        });
+    }
 
-// ---------- First load ----------
-loadAll('Roma, IT', 41.902783, 12.496366);
+    loadAll(DEFAULT_LOCATION.name, DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}

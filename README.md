@@ -3,7 +3,7 @@
 41weather is a lightweight client-side weather viewer that combines the public MeteoAM meteogram endpoint with Open-Meteo geocoding. It ships as a static HTML/CSS/JS bundle and renders interactive daily summaries and an hourly chart with Chart.js.
 
 ## Features
-- Location search powered by the Open-Meteo geocoding API, with a quick shortcut to Pesaro.
+- Location search powered by the Open-Meteo geocoding API, with a quick shortcut to Roma.
 - Fetches detailed hourly forecasts from MeteoAM (preset1) and groups them into expandable daily summaries.
 - Responsive UI with a combined temperature/rainfall chart, weather icons, and key metadata (timezone, elevation).
 - Zero-build setup: just serve the static files and the app runs in modern browsers.
@@ -24,7 +24,7 @@
    npx http-server .
    ```
 2. Open `http://localhost:8000/` (or `http://localhost:8000/index.html`) in your browser.
-3. Use the search box to find a city or click `Pesaro` for the default location.
+3. Use the search box to find a city or click `Roma` for the default location.
 
 > Note: Directly opening the HTML file from disk (`file://`) may block `fetch` in some browsers. Prefer a local server.
 
