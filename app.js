@@ -115,6 +115,28 @@ const readLocationFromUrl = async () => {
     }
     return null;
 };
+const syncTableStickyWidths = (tableEl) => {
+    if (!tableEl) return;
+    const firstCol = tableEl.querySelector('th:first-child, td:first-child');
+    const secondCol = tableEl.querySelector('th:nth-child(2), td:nth-child(2)');
+    if (firstCol) {
+        const width = firstCol.getBoundingClientRect().width;
+        if (width) tableEl.style.setProperty('--hour-col-width', `${width}px`);
+    }
+    if (secondCol) {
+        const width = secondCol.getBoundingClientRect().width;
+        if (width) tableEl.style.setProperty('--icon-col-width', `${width}px`);
+    }
+};
+let stickyWidthRaf = null;
+const scheduleStickyColumnSync = () => {
+    if (typeof window === 'undefined') return;
+    if (stickyWidthRaf) cancelAnimationFrame(stickyWidthRaf);
+    stickyWidthRaf = requestAnimationFrame(() => {
+        stickyWidthRaf = null;
+        document.querySelectorAll('.table table').forEach(syncTableStickyWidths);
+    });
+};
 
 // ---------- State ----------
 const DEFAULT_LOCATION = { name: 'Roma, IT', lat: 41.902783, lon: 12.496366, tz: 'Europe/Rome' };
@@ -269,12 +291,13 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
             renderDailyFromStats(stats, tz, hourlyGroups, hasMarine);
         });
     }
+    scheduleStickyColumnSync();
 }
 
 function renderDayHours(dayGroup, tz, showMarine) {
     let html = '<div class="table" style="max-height:400px;margin-top:10px"><table>';
     html += `<tr>
-    <th>Ora</th><th></th><th>Temp (°C)</th><th>Pioggia (mm)</th><th>Umidità (%)</th>
+    <th>Ora</th><th class="icon-header"><span class="visually-hidden">Icona meteo</span></th><th>Temp (°C)</th><th>Pioggia (mm)</th><th>Umidità (%)</th>
     <th>Pressione (hPa)</th><th>Vento (km/h)</th><th>Raffica (km/h)</th><th>Direzione</th>
     ${showMarine ? '<th>Onde (m)</th><th>Periodo (s)</th><th>Dir. onda</th><th>Beaufort</th>' : ''}
   </tr>`;

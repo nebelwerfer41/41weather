@@ -7,7 +7,9 @@
     --accent: #6aa6ff;
     --ok: #41c97c;
     --warn: #ffcc66;
-    --bad: #ff6b6b
+    --bad: #ff6b6b;
+    --hour-col-width: 120px;
+    --icon-col-width: 60px
 }
 
 * {
@@ -171,6 +173,18 @@ main {
     color: var(--muted)
 }
 
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
 .row {
     display: flex;
     justify-content: space-between;
@@ -188,7 +202,6 @@ main {
     width: 50px;
     height: 50px;
     vertical-align: middle;
-    margin-right: 6px
 }
 
 .chart-container {
@@ -247,8 +260,46 @@ th {
     position: sticky;
     top: 0;
     background: #10203a;
-    z-index: 10;
+    z-index: 40;
     font-weight: 600
+}
+
+th:first-child,
+td:first-child {
+    position: sticky;
+    left: 0;
+    background: rgba(16, 32, 58, 0.95);
+    z-index: 20;
+    box-shadow: 6px 0 12px rgba(9, 17, 35, 0.65)
+}
+
+th:first-child {
+    background: rgba(16, 32, 58, 0.98);
+    z-index: 42;
+}
+
+th:nth-child(2),
+td:nth-child(2) {
+    position: sticky;
+    left: var(--hour-col-width);
+    background: rgba(16, 32, 58, 0.92);
+    z-index: 22;
+    box-shadow: 4px 0 10px rgba(9, 17, 35, 0.45)
+}
+
+th:nth-child(2) {
+    min-height: 40px;
+    z-index: 41;
+}
+
+th.icon-header::after {
+    content: '';
+    display: block;
+    height: 32px;
+}
+
+td:nth-child(2) {
+    text-align: center;
 }
 
 tr {
@@ -265,7 +316,9 @@ td {
 
 td:first-child {
     color: var(--text);
-    font-weight: 500
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis
 }
 
 footer {
