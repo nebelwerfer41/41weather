@@ -39,7 +39,7 @@ You can load the app straight to a given place by passing query parameters:
 Once a location is loaded, the app keeps the URL in sync so you can bookmark or share it.
 
 ## APIs Used
-- **MeteoAM meteograms** (`https://api.meteoam.it/deda-meteograms/api/GetMeteogram/preset1/{lat},{lon}`) – hourly atmospheric parameters and daily stats.
+- **MeteoAM meteograms** (`https://api.meteoam.it/deda-meteograms/api/GetMeteogram/{preset}/{lat},{lon}`) – hourly atmospheric parameters and daily stats.
 - **Open-Meteo Geocoding** (`https://geocoding-api.open-meteo.com/v1/search`) – translates user queries into coordinates and timezone data.
 
 See `api.md` for the detailed reverse-engineering notes captured during development.
