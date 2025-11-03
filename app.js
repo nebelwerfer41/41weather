@@ -274,7 +274,7 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
         <div class="flex" style="justify-content:space-between;align-items:center">
           <div class="flex" style="align-items:center;gap:8px">
             <span class="expand-icon">${isExpanded ? '▼' : '▶'}</span>
-            <img class="icon" src="${iconSvg}" title="${iconLabel}">
+            <img class="icon" src="${iconSvg}" alt="${iconLabel}" title="${iconLabel}">
             <div class="day-title">${fmtDay(s.localDate, tz)}</div>
           </div>
           <span class="big">${s.maxCelsius}° / ${s.minCelsius}°</span>
@@ -297,7 +297,7 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
 function renderDayHours(dayGroup, tz, showMarine) {
     let html = '<div class="table" style="max-height:400px;margin-top:10px"><table>';
     html += `<tr>
-    <th>Ora</th><th class="icon-header"><span class="visually-hidden">Icona meteo</span></th><th>Temp (°C)</th><th>Pioggia (mm)</th><th>Umidità (%)</th>
+    <th>Ora</th><th class="icon-header" aria-label="Icona meteo">&nbsp;</th><th>Temp (°C)</th><th>Pioggia (mm)</th><th>Umidità (%)</th>
     <th>Pressione (hPa)</th><th>Vento (km/h)</th><th>Raffica (km/h)</th><th>Direzione</th>
     ${showMarine ? '<th>Onde (m)</th><th>Periodo (s)</th><th>Dir. onda</th><th>Beaufort</th>' : ''}
   </tr>`;
@@ -327,7 +327,7 @@ function renderDayHours(dayGroup, tz, showMarine) {
 
         html += `<tr>
       <td>${fmtTime(h.time, tz)}</td>
-      <td><img class="icon" src="${iconSvg}" title="${iconLabel}" style="width:24px;height:24px"></td>
+      <td><img class="icon" src="${iconSvg}" alt="${iconLabel}" title="${iconLabel}" style="width:24px;height:24px"></td>
       <td><span class="temp">${Math.round(h.temp)}°C</span></td>
       <td class="rain">${mm(h.rain) > 0 ? mm(h.rain) + ' mm' : '—'}</td>
       <td class="humidity">${h.humidity}%</td>

@@ -93,7 +93,7 @@ datasets["0"][ indexParametro ][ indexTimestamp ]
 
 Esempio:
 
-temperatura °C → datasets["0"]["0"][i]    # se paramlist[0] == "2t"
+temperatura °C  → datasets["0"]["0"][i]    # se paramlist[0] == "2t"
 prob. pioggia   → datasets["0"]["3"][i]    # se paramlist[3] == "tpp"
 vento km/h      → datasets["0"]["7"][i]    # se paramlist[7] == "wkmh"
 
