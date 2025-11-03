@@ -5,7 +5,9 @@
 ## Features
 - Location search powered by the Open-Meteo geocoding API, with a quick shortcut to Roma.
 - Fetches detailed hourly forecasts from MeteoAM (preset1) and groups them into expandable daily summaries.
+- When a coastal/offshore point is selected, augments the hourly table with marine data (preset2) in the same rows while hiding those columns for inland locations.
 - Responsive UI with a combined temperature/rainfall chart, weather icons, and key metadata (timezone, elevation).
+- Weather icons ship with descriptive alt/title text for accessibility and quick hover hints.
 - Zero-build setup: just serve the static files and the app runs in modern browsers.
 
 ## Project Structure
@@ -27,6 +29,14 @@
 3. Use the search box to find a city or click `Roma` for the default location.
 
 > Note: Directly opening the HTML file from disk (`file://`) may block `fetch` in some browsers. Prefer a local server.
+
+### Deep-linking a location
+You can load the app straight to a given place by passing query parameters:
+
+- `?lat=41.89020&lon=12.49223&name=Roma%2C%20IT` pins exact coordinates, optionally naming the location.
+- `?q=isola%20d%27ischia` resolves the string through the same Open-Meteo geocoding used by the search box.
+
+Once a location is loaded, the app keeps the URL in sync so you can bookmark or share it.
 
 ## APIs Used
 - **MeteoAM meteograms** (`https://api.meteoam.it/deda-meteograms/api/GetMeteogram/preset1/{lat},{lon}`) – hourly atmospheric parameters and daily stats.
