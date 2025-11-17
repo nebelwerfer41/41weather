@@ -434,7 +434,7 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine, sunDataByDay =
         const dayHours = hourlyGroups.find(g => g.date === s.localDate.slice(0, 10));
         const dateKey = dayKeyFromIso(s.localDate);
         const sunInfo = sunDataByDay.get(dateKey);
-        const sunTimes = sunInfo ? `Alba: ${fmtClock(sunInfo.sunrise, tz)} | Tramonto: ${fmtClock(sunInfo.sunset, tz)}` : '—';
+        const sunTimes = sunInfo ? `☀️ ⬆️ ${fmtClock(sunInfo.sunrise, tz)} ⬇️ ${fmtClock(sunInfo.sunset, tz)}` : '—';
         const sunTooltip = escapeAttr(buildSunTooltip(sunInfo, tz));
         const moonEmoji = sunInfo?.moonEvent || '';
         const moonTitle = sunInfo?.moonPhaseText ? ` title="${escapeAttr(sunInfo.moonPhaseText)}"` : '';
