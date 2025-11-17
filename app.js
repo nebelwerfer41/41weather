@@ -4,9 +4,20 @@ const degToArrow = (deg) => {
     const dirs = ['N', 'N-NE', 'NE', 'E-NE', 'E', 'E-SE', 'SE', 'S-SE', 'S', 'S-SW', 'SW', 'W-SW', 'W', 'W-NW', 'NW', 'N-NW', 'N'];
     return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5)];
 };
-const fmtDay = (iso, tz) => new Date(iso).toLocaleDateString('it-IT', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit' });
+const fmtDay = (iso, tz) => new Date(iso).toLocaleDateString('it-IT', { timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit' });
 const fmtTime = (iso, tz) => new Date(iso).toLocaleString('it-IT', { timeZone: tz, hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+const fmtClock = (iso, tz) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return '—';
+    return d.toLocaleTimeString('it-IT', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+};
 const mm = v => (v == null ? 0 : Math.round(Number(v) * 10) / 10);
+const escapeAttr = (str = '') => String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 const ICON_META = {
     "01": { emoji: "☀️", label: "Sereno" },
     "02": { emoji: "🌫️", label: "Sole con foschia" },
@@ -33,6 +44,17 @@ const ICON_META = {
     "34": { emoji: "🌤️", label: "Parzialmente nuvoloso (notte)" },
     "35": { emoji: "🌥️", label: "Molto nuvoloso (notte)" },
     "36": { emoji: "🌤️", label: "Nuvoloso con schiarite (notte)" }
+};
+
+const MOON_EMOJI = {
+    new: '🌑',
+    waxing_crescent: '🌒',
+    first_quarter: '🌓',
+    waxing_gibbous: '🌔',
+    full: '🌕',
+    waning_gibbous: '🌖',
+    last_quarter: '🌗',
+    waning_crescent: '🌘'
 };
 
 const toNumber = (value) => {
@@ -143,7 +165,7 @@ const DEFAULT_LOCATION = { name: 'Roma, IT', lat: 41.902783, lon: 12.496366, tz:
 
 let state = {
     lat: DEFAULT_LOCATION.lat, lon: DEFAULT_LOCATION.lon, name: DEFAULT_LOCATION.name, tz: DEFAULT_LOCATION.tz, elev: null, chart: null,
-    hourlyData: null, dailyData: null, expandedDay: null, hasMarineData: false
+    hourlyData: null, dailyData: null, expandedDay: null, hasMarineData: false, sunData: new Map()
 };
 
 // ---------- Fetch MeteoAM ----------
@@ -164,6 +186,148 @@ async function geocode(q) {
         lat: x.latitude, lon: x.longitude, tz: x.timezone
     }));
 }
+
+const dayKeyFromIso = (iso) => (iso ? String(iso).slice(0, 10) : null);
+
+const normalizePhaseId = (name = '') => {
+    const t = name.toLowerCase();
+    if (t.includes('new')) return 'new';
+    if (t.includes('first')) return 'first_quarter';
+    if (t.includes('full')) return 'full';
+    if (t.includes('last') || t.includes('third')) return 'last_quarter';
+    return null;
+};
+
+const formatTzOffset = (tz, date) => {
+    try {
+        const base = new Date(`${date}T12:00:00Z`);
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz || 'UTC',
+            hour12: false,
+            timeZoneName: 'longOffset',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        }).formatToParts(base);
+        const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+        const m = tzPart.match(/([+-]\d{2}):?(\d{2})/);
+        if (m) return `${m[1]}:${m[2]}`;
+    } catch (err) {
+        console.warn('Impossibile calcolare offset per', tz, date, err);
+    }
+    return '+00:00';
+};
+
+async function fetchMetMoonData(lat, lon, date, tz) {
+    // Manteniamo la firma per compatibilità, ma questo endpoint non viene più usato.
+    return {
+        moonPhaseValue: null,
+        moonPhaseText: null,
+        moonrise: null,
+        moonset: null
+    };
+}
+
+async function fetchSunriseSunsetOrg(lat, lon, date) {
+    const url = `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${date}&formatted=0`;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error('Sunrise-Sunset.org ' + r.status);
+    const j = await r.json();
+    if (j.status !== 'OK') throw new Error('Sunrise-Sunset.org status ' + j.status);
+    const res = j.results || {};
+    return {
+        sunrise: res.sunrise || null,
+        sunset: res.sunset || null,
+        civilDawn: res.civil_twilight_begin || null,
+        civilDusk: res.civil_twilight_end || null,
+        nauticalDawn: res.nautical_twilight_begin || null,
+        nauticalDusk: res.nautical_twilight_end || null,
+        astroDawn: res.astronomical_twilight_begin || null,
+        astroDusk: res.astronomical_twilight_end || null
+    };
+}
+
+async function fetchUsnoOneDay(lat, lon, date, tz) {
+    const offsetStr = formatTzOffset(tz, date); // "+02:00"
+    const offsetNum = Number(offsetStr.replace(':', ''));
+    const tzHours = Math.trunc(offsetNum / 100);
+    const tzQuery = tzHours;
+    const url = `https://aa.usno.navy.mil/api/rstt/oneday?date=${date}&coords=${lat},${lon}&tz=${tzQuery}&dst=true`;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error('USNO oneday ' + r.status);
+    const j = await r.json();
+    const phaseName = j?.properties?.data?.curphase || j?.properties?.curphase || j?.curphase || '';
+    const phaseId = normalizePhaseId(phaseName);
+    const moonrise = j?.properties?.data?.moondata?.[0]?.rise || j?.properties?.moonrise || null;
+    const moonset = j?.properties?.data?.moondata?.[0]?.set || j?.properties?.moonset || null;
+    return { phaseId, phaseName, moonrise, moonset };
+}
+
+async function loadSunAndMoon(lat, lon, dates = [], tz = 'UTC') {
+    const uniqueDates = Array.from(new Set(dates.filter(Boolean)));
+    if (!uniqueDates.length) return new Map();
+    const result = new Map();
+
+    await Promise.all(uniqueDates.map(async (date) => {
+        let fallbackData = null;
+        try {
+            fallbackData = await fetchSunriseSunsetOrg(lat, lon, date);
+        } catch (err) {
+            console.warn('Sunrise-Sunset.org non disponibile', err);
+        }
+
+        const merged = {
+            sunrise: fallbackData?.sunrise || null,
+            sunset: fallbackData?.sunset || null,
+            civilDawn: fallbackData?.civilDawn || null,
+            civilDusk: fallbackData?.civilDusk || null,
+            nauticalDawn: fallbackData?.nauticalDawn || null,
+            nauticalDusk: fallbackData?.nauticalDusk || null,
+            astroDawn: fallbackData?.astroDawn || null,
+            astroDusk: fallbackData?.astroDusk || null,
+            moonPhaseValue: null,
+            moonPhaseText: null,
+            moonrise: null,
+            moonset: null
+        };
+
+        result.set(date, merged);
+    }));
+
+    // USNO per-day: assegna icona solo quando cambia fase rispetto al giorno precedente
+    const sortedDates = uniqueDates.slice().sort();
+    let lastPhase = null;
+    for (const d of sortedDates) {
+        try {
+            const usno = await fetchUsnoOneDay(lat, lon, d, tz);
+            const info = result.get(d);
+            if (!info) continue;
+            info.moonPhaseText = usno.phaseName || null;
+            if (usno.phaseId && usno.phaseId !== lastPhase) {
+                info.moonEvent = MOON_EMOJI[usno.phaseId];
+                lastPhase = usno.phaseId;
+            } else {
+                info.moonEvent = null;
+            }
+            info.moonrise = usno.moonrise || info.moonrise || null;
+            info.moonset = usno.moonset || info.moonset || null;
+            result.set(d, info);
+        } catch (err) {
+            console.warn('USNO non disponibile per', d, err);
+        }
+    }
+
+    return result;
+}
+
+const buildSunTooltip = (info, tz) => {
+    if (!info) return 'Orari alba/tramonto non disponibili';
+    const lines = [
+        `Civile: ⬆ ${fmtClock(info.civilDawn, tz)} | ⬇︎ ${fmtClock(info.civilDusk, tz)}`,
+        `Nautica: ⬆ ${fmtClock(info.nauticalDawn, tz)} | ⬇︎ ${fmtClock(info.nauticalDusk, tz)}`,
+        `Astronomica: ⬆ ${fmtClock(info.astroDawn, tz)} | ⬇︎ ${fmtClock(info.astroDusk, tz)}`
+    ];
+    return lines.join('\n');
+};
 
 // ---------- Renderers ----------
 function renderHeader(name, tz, elev) {
@@ -251,7 +415,7 @@ function groupHourlyByDay(ts, ds, tz, paramlist = [], marineData) {
     return Object.values(dayGroups);
 }
 
-function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
+function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine, sunDataByDay = new Map()) {
     const root = document.getElementById('days');
     root.innerHTML = '';
     if (!stats || !stats.length) { root.innerHTML = '<div class="muted">Nessun riepilogo giornaliero disponibile.</div>'; return; }
@@ -268,6 +432,12 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
         const iconLabel = codeToLabel(s.icon);
         const isExpanded = state.expandedDay === i;
         const dayHours = hourlyGroups.find(g => g.date === s.localDate.slice(0, 10));
+        const dateKey = dayKeyFromIso(s.localDate);
+        const sunInfo = sunDataByDay.get(dateKey);
+        const sunTimes = sunInfo ? `Alba: ${fmtClock(sunInfo.sunrise, tz)} | Tramonto: ${fmtClock(sunInfo.sunset, tz)}` : '—';
+        const sunTooltip = escapeAttr(buildSunTooltip(sunInfo, tz));
+        const moonEmoji = sunInfo?.moonEvent || '';
+        const moonTitle = sunInfo?.moonPhaseText ? ` title="${escapeAttr(sunInfo.moonPhaseText)}"` : '';
 
         el.innerHTML = `
       <div class="day-header" style="cursor:pointer;user-select:none">
@@ -275,9 +445,16 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
           <div class="flex" style="align-items:center;gap:8px">
             <span class="expand-icon">${isExpanded ? '▼' : '▶'}</span>
             <img class="icon" src="${iconSvg}" alt="${iconLabel}" title="${iconLabel}">
-            <div class="day-title">${fmtDay(s.localDate, tz)}</div>
+            <div class="day-title-wrap">
+              <div class="day-title">${fmtDay(s.localDate, tz)}</div>
+              <div class="sun-row tooltip" data-tooltip="${sunTooltip}" tabindex="0">
+                <span class="sun-times">${sunTimes}</span>
+              </div>
+            </div>
+            ${moonEmoji ? `<span class="moon-event"${moonTitle}>${moonEmoji}</span>` : ''}
+          </div>            
+            <div class="big">${s.maxCelsius}° / ${s.minCelsius}°</div>
           </div>
-          <span class="big">${s.maxCelsius}° / ${s.minCelsius}°</span>
         </div>
       </div>
       <div class="day-details" style="display:${isExpanded ? 'block' : 'none'}">
@@ -288,8 +465,14 @@ function renderDailyFromStats(stats, tz, hourlyGroups, hasMarine) {
 
         el.querySelector('.day-header').addEventListener('click', () => {
             state.expandedDay = state.expandedDay === i ? null : i;
-            renderDailyFromStats(stats, tz, hourlyGroups, hasMarine);
+            renderDailyFromStats(stats, tz, hourlyGroups, hasMarine, sunDataByDay);
         });
+        const sunRowEl = el.querySelector('.sun-row');
+        if (sunRowEl) {
+            ['click', 'touchstart'].forEach(evt => {
+                sunRowEl.addEventListener(evt, (e) => e.stopPropagation());
+            });
+        }
     }
     scheduleStickyColumnSync();
 }
@@ -474,9 +657,12 @@ async function loadAll(name, lat, lon) {
         const hasMarineData = hourlyGroups.some(g => g.hasMarine);
         state.hourlyData = hourlyGroups;
         state.hasMarineData = hasMarineData;
+        const dailyStats = data?.extrainfo?.stats || [];
+        const sunDates = dailyStats.map(s => dayKeyFromIso(s.localDate)).filter(Boolean);
+        state.sunData = await loadSunAndMoon(lat, lon, sunDates, tz);
 
         // Render daily summaries with expandable cards
-        renderDailyFromStats(data?.extrainfo?.stats || [], tz, hourlyGroups, hasMarineData);
+        renderDailyFromStats(dailyStats, tz, hourlyGroups, hasMarineData, state.sunData);
 
         // Keep overall chart for first day
         renderHourly(data.timeseries, ds, tz);

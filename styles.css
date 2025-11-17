@@ -162,7 +162,14 @@ main {
 }
 
 .day-title {
-    font-weight: 700
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.day-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .day-title.section {
@@ -182,7 +189,7 @@ main {
 }
 
 .big {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 800
 }
 
@@ -378,6 +385,50 @@ footer {
 
 .wind {
     color: var(--muted)
+}
+
+.sun-row {
+    font-size: 13px;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: context-menu;
+    position: relative;
+}
+
+.sun-times {
+    font-variant-numeric: tabular-nums;
+    font-size: small;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    top: 120%;
+    min-width: 220px;
+    background: #0f1d32;
+    color: var(--text);
+    border: 1px solid #1b2946;
+    border-radius: 10px;
+    padding: 10px;
+    white-space: pre-line;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s;
+    z-index: 50;
+}
+
+.tooltip:hover::after,
+.tooltip:focus::after {
+    opacity: 1;
+}
+
+.moon-event {
+    font-size: 20px;
+    line-height: 1;
 }
 
 @media (min-width:1100px) {
