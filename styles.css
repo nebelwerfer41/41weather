@@ -141,7 +141,7 @@ main {
 }
 
 .day-header {
-    padding: 14px;
+    padding: 8px;
     border-bottom: 1px solid #1b2946;
     transition: background .2s
 }

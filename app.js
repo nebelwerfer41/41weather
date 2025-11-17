@@ -322,9 +322,9 @@ async function loadSunAndMoon(lat, lon, dates = [], tz = 'UTC') {
 const buildSunTooltip = (info, tz) => {
     if (!info) return 'Orari alba/tramonto non disponibili';
     const lines = [
-        `Civile: ⬆ ${fmtClock(info.civilDawn, tz)} | ⬇︎ ${fmtClock(info.civilDusk, tz)}`,
-        `Nautica: ⬆ ${fmtClock(info.nauticalDawn, tz)} | ⬇︎ ${fmtClock(info.nauticalDusk, tz)}`,
-        `Astronomica: ⬆ ${fmtClock(info.astroDawn, tz)} | ⬇︎ ${fmtClock(info.astroDusk, tz)}`
+        `Civile: ⬆️ ${fmtClock(info.civilDawn, tz)} | ⬇️ ${fmtClock(info.civilDusk, tz)}`,
+        `Nautico: ⬆️️ ${fmtClock(info.nauticalDawn, tz)} | ⬇️ ${fmtClock(info.nauticalDusk, tz)}`,
+        `Astronomica: ⬆️ ${fmtClock(info.astroDawn, tz)} | ⬇️ ${fmtClock(info.astroDusk, tz)}`
     ];
     return lines.join('\n');
 };
