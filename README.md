@@ -1,3 +1,5 @@
+[Catalog](https://nebelwerfer41.github.io/) · [Repository](https://github.com/nebelwerfer41/41weather)
+
 # 41weather
 
 41weather is a lightweight client-side weather viewer that combines the public MeteoAM meteogram endpoint with Open-Meteo geocoding. It ships as a static HTML/CSS/JS bundle and renders interactive daily summaries (with sunrise/sunset and lunar phases) plus an hourly chart with Chart.js.
@@ -41,8 +43,8 @@ Once a location is loaded, the app keeps the URL in sync so you can bookmark or 
 
 ## APIs Used
 - **MeteoAM meteograms** (`https://api.meteoam.it/deda-meteograms/api/GetMeteogram/{preset}/{lat},{lon}`) – hourly atmospheric parameters and daily stats.
-- **Sunrise-Sunset.org** (`https://api.sunrise-sunset.org/json`) – sunrise/sunset e fasce di crepuscolo (per giorno).
-- **USNO RSTT oneday** (`https://aa.usno.navy.mil/api/rstt/oneday`) – fasi lunari giornaliere (nuova, primi/ultimi quarti, piena) calcolate con data/coordinate/fuso configurati dall’app.
+- **Sunrise-Sunset.org** (`https://api.sunrise-sunset.org/json`) – sunrise/sunset and twilight periods (per day).
+- **USNO RSTT oneday** (`https://aa.usno.navy.mil/api/rstt/oneday`) – daily lunar phases (new/first/last quarter/full) calculated using the application’s date, coordinates, and timezone.
 - **Open-Meteo Geocoding** (`https://geocoding-api.open-meteo.com/v1/search`) – translates user queries into coordinates and timezone data.
 
 See `api.md` for the detailed reverse-engineering notes captured during development.
