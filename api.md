@@ -75,3 +75,11 @@ Cache astronomica e geocoding: memoria della pagina, 24 ore, massimo 64 URL. Le 
 `GET https://geocoding-api.open-meteo.com/v1/search?name=…&count=5&language=it&format=json`
 
 Si conserva il comportamento esistente: selezione del primo risultato. Nome, coordinate e fuso vengono trasferiti al forecast; l'URL della pagina viene aggiornato solo dopo il caricamento riuscito dei dati atmosferici.
+
+## Atmospheric editorial analysis
+
+`forecast-text.js` consumes only the normalized snapshot; it does not reinterpret raw API indices. The icon catalog now carries sky rank (when documented), veils/obscuration, phenomenon and day/night variant while preserving `icon()`'s emoji/label pair. Daily stats icons remain provider summaries and are not used to infer hourly evolution.
+
+Hourly probability is kept separate from phenomena and data coverage. Editorial thresholds and temporal rules are documented in README. Positive probabilities alone only name generic precipitation. Zero is retained in data and numeric views but omitted from generated prose. No daily probability, accumulation, gust or statistical interval is inferred. The detailed positive range is explicitly labeled positive if zero-valued hours also occur in that band. Diagnostics retain the complete evidence, including zeros and nulls.
+
+The real regression fixture `tests/fixtures/napoli-real.json` records 12 original consecutive UTC samples from preset1 at 40.8518,14.2681, acquired on 2026-10-11, including nonzero `tpp` values and unchanged daily stats/model runs. Its source URL and reduction are recorded alongside the payload.
