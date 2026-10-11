@@ -51,17 +51,17 @@ test('probability alone does not invent precipitation type, accumulation or dail
 test('all significant phenomena survive every level, including low or absent probability', () => {
     for (const [code, label] of [['10', 'temporale'], ['12', 'pioggia congelantesi'], ['14', 'nebbia'], ['15', 'grandine'], ['16', 'neve'], ['17', 'tromba d’aria'], ['19', 'tempesta di sabbia']]) {
         const s = snapshot([{ icon: code, probability: 0 }]);
-        for (const verbosity of ['title', 'brief', 'standard', 'detailed']) assert.match(text(s, verbosity), new RegExp(label));
+        for (const verbosity of ['title', 'brief', 'standard', 'detailed']) assert.match(text(s, verbosity), new RegExp(label, 'i'));
         assert.doesNotMatch(text(s, 'detailed'), /allerta|raffiche/);
     }
     const low = snapshot([{ icon: '10', probability: 10 }]);
-    assert.match(text(low), /Segnale di temporale/); assert.match(text(low), /probabilità.*bassa/);
+    assert.match(text(low), /Temporale/); assert.match(text(low), /probabilità.*bassa/);
     assert.doesNotMatch(text(snapshot([{ icon: '10' }])), /bassa/);
 });
 test('title retains multiple significant phenomena instead of choosing only one', () => {
     const s = snapshot([{ icon: '10' }, { icon: '15' }, { icon: '16' }]);
     for (const level of ['title', 'brief', 'standard', 'detailed']) {
-        assert.match(text(s, level), /temporale/); assert.match(text(s, level), /grandine/); assert.match(text(s, level), /neve/);
+        assert.match(text(s, level), /temporale/i); assert.match(text(s, level), /grandine/i); assert.match(text(s, level), /neve/i);
     }
 });
 test('stable skies and isolated oscillations do not invent a sustained evolution', () => {
@@ -154,7 +154,7 @@ test('determinism, purity and optional providers cannot change atmospheric evide
     const day = first.values().next().value; const copy = structuredClone(day);
     for (const verbosity of ['title', 'brief', 'standard', 'detailed']) {
         assert.equal(renderForecast(day, { verbosity }), renderForecast(day, { verbosity }));
-        assert.match(renderForecast(day, { verbosity }), /neve/);
+        assert.match(renderForecast(day, { verbosity }), /neve/i);
     }
     assert.deepEqual(day, copy);
     for (const f of day.facts) { assert.ok(f.category && f.reason && f.precision); assert.ok(f.samples.every(h => before.hours.some(s => s.time === h.time))); }
@@ -171,7 +171,7 @@ test('real MeteoAM sample with positive probabilities uses the same normalized m
     assert.ok(s.hours.some(h => h.probability > 0));
     const day = summary(s);
     assert.ok(day.facts.some(f => f.category === 'probability' && f.max >= 30));
-    assert.match(renderForecast(day), /pioggia/);
+    assert.match(renderForecast(day), /pioggia/i);
     assert.match(renderForecast(day, { verbosity: 'detailed' }), /30%/);
 });
 
@@ -200,4 +200,18 @@ test('positive fractional probability is not rounded to zero; temperature matche
     s.days[0].min = -0.5; s.days[0].max = 0.5;
     assert.match(text(s, 'detailed', true), /Probabilità 0,4%/);
     assert.match(text(s, 'detailed', true), /minima -1 °C, massima 1 °C/);
+});
+
+test('phenomena use direct names and group only compatible time and probability facts', () => {
+    const together = snapshot([{ hour: 6, icon: '08' }, { hour: 7, icon: '13' }]);
+    assert.equal(text(together, 'title'), 'Pioggia e foschia.');
+    assert.equal(text(together, 'brief'), 'Pioggia e foschia.');
+    assert.equal(text(together, 'standard'), 'Pioggia e foschia al mattino.');
+    assert.equal(text(together, 'detailed'), 'Pioggia alle 06. Foschia alle 07.');
+    const separate = snapshot([{ hour: 6, icon: '08', probability: 10 }, { hour: 15, icon: '13' }]);
+    assert.match(text(separate), /Pioggia al mattino; probabilità di precipitazione bassa\. Foschia nel pomeriggio\./);
+    for (const level of ['title', 'brief', 'standard', 'detailed']) {
+        assert.doesNotMatch(text(together, level), /indicazione di|segnale di/i);
+        assert.doesNotMatch(text(snapshot([{ icon: '13' }]), level), /indicazione di|segnale di/i);
+    }
 });

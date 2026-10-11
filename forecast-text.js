@@ -194,16 +194,23 @@ export function renderForecast(daySummary, { verbosity = 'standard', includeTemp
     const veils = find('veils');
     const veilText = veils.some(f => f.label === 'velature') ? 'velature' : veils.length ? 'velature parziali' : '';
     const sentences = [];
-    const phenomenonText = f => {
-        let text = f.single ? `segnale di ${f.label}` : `indicazione di ${f.label}${f.intermittent ? ' a tratti' : ''}`;
-        if (level === 'standard') text += ` ${bandText(f.bands)}`;
-        if (level === 'detailed') text += ` ${windowText(f, tz)}`;
-        if (f.probability.length && f.probability.every(p => p < rules.possible) && !['foschia', 'nebbia', 'fumo', 'tempesta di sabbia'].includes(f.label))
-            text += '; probabilità di precipitazione bassa';
+    const phenomenonGroups = new Map();
+    for (const f of phenomena) {
+        const placement = level === 'standard' ? bandText(f.bands) : level === 'detailed' ? windowText(f, tz) : '';
+        const lowProbability = f.probability.length > 0 && f.probability.every(p => p < rules.possible) &&
+            !['foschia', 'nebbia', 'fumo', 'tempesta di sabbia'].includes(f.label);
+        const key = JSON.stringify([placement, f.intermittent, lowProbability]);
+        if (!phenomenonGroups.has(key)) phenomenonGroups.set(key, { labels: [], placement, intermittent: f.intermittent, lowProbability });
+        phenomenonGroups.get(key).labels.push(f.label);
+    }
+    const phenomenonSentences = [...phenomenonGroups.values()].map(group => {
+        const labels = group.labels.length > 1 ? `${group.labels.slice(0, -1).join(', ')} e ${group.labels.at(-1)}` : group.labels[0];
+        let text = `${labels}${group.intermittent ? ' a tratti' : ''}${group.placement ? ` ${group.placement}` : ''}`;
+        if (group.lowProbability) text += '; probabilità di precipitazione bassa';
         return sentence(text);
-    };
+    });
     if (level === 'title') {
-        if (phenomena.length) sentences.push(phenomena.map(phenomenonText).join(' '));
+        if (phenomena.length) sentences.push(phenomenonSentences.join(' '));
         else if (mainProbability.length) sentences.push(sentence(`${mainProbability.some(f => f.level === 'probable') ? 'precipitazioni probabili' : 'possibili precipitazioni'} ${bandText(mainProbability.map(f => f.band))}`));
         else if (evolution.length) sentences.push(sentence(evolution.join(', ')));
         else if (sky) sentences.push(sentence(sky.mixed ? 'cielo variabile' : sky.label));
@@ -212,7 +219,7 @@ export function renderForecast(daySummary, { verbosity = 'standard', includeTemp
         const skyText = [sky ? sky.mixed ? 'cielo variabile' : sky.label : '', veilText].filter(Boolean);
         for (const f of changes) skyText.push(`${f.label}${level === 'standard' || level === 'detailed' ? ` ${bandText(f.bands)}` : ''}`);
         if (skyText.length) sentences.push(sentence([...new Set(skyText)].join(', ')));
-        sentences.push(...phenomena.map(phenomenonText));
+        sentences.push(...phenomenonSentences);
         if (level === 'detailed') {
             for (const f of probability.filter(f => f.max > 0)) {
                 const positives = f.samples.map(h => h.probability).filter(p => validProbability(p) && p > 0);

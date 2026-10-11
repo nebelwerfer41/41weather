@@ -4,7 +4,7 @@ Base verified twice: PR #1 remains open at `186ac92b9a6e4012c115c43bfc8a29aebfbd
 
 ## Executed checks
 
-- `npm test`: **28 passed**, including the original 7 regressions. Pure analysis/rendering tests cover unknown/missing/zero values, significant phenomena and probability disagreement, sustained vs isolated sky changes, observed pauses vs holes, mixed resolutions, midnight, truncated coverage, 23/25-hour days, fractional zones, circular/calm/absent wind, configurable rules, determinism and no snapshot mutation. Editorial regression tests enforce deduplicated veils, no sample boilerplate, no zero probabilities in prose, and positive fractional probabilities without rounding to zero.
+- `npm test`: **29 passed**, including the original 7 regressions. Pure analysis/rendering tests cover unknown/missing/zero values, significant phenomena and probability disagreement, sustained vs isolated sky changes, observed pauses vs holes, mixed resolutions, midnight, truncated coverage, 23/25-hour days, fractional zones, circular/calm/absent wind, configurable rules, determinism and no snapshot mutation. Editorial regression tests enforce deduplicated veils, no sample boilerplate, no zero probabilities in prose, positive fractional probabilities without rounding to zero, and direct phenomenon names grouped only when time/intermittency/probability qualifications match.
 - `node --check` for changed JavaScript modules and QA script; `git diff --check` passed.
 - `qa/browser.mjs`: **passed in Chrome 155.0.8059.40 and Playwright WebKit 27.2** on macOS. Real HTML/CSS layout, native details and actual Chart.js 4.4.1, with deterministic intercepted provider responses.
 - Widths **320, 390, 768, 1440 px**, including a 1440→320 resize. No page-wide horizontal overflow; tables retain their own horizontal scrolling; sticky offsets match measured column widths after resize/opening/marine enrichment. Text is selectable outside the clickable summary, and the chart uses the available content width.
@@ -16,7 +16,7 @@ A real public MeteoAM Napoli payload was acquired on 2026-10-11. The committed f
 
 ## Measured weight and contrast
 
-`forecast-text.js`: **18,447 bytes source**, **6,070 bytes gzip** using Node `gzipSync` defaults. This is within the ≤30 kB source / approximately 5–10 kB gzip target. No runtime dependency was added; Playwright/browser downloads and the test Chart.js copy are in temporary QA storage only.
+`forecast-text.js`: **19,000 bytes source**, **6,223 bytes gzip** using Node `gzipSync` defaults. This is within the ≤30 kB source / approximately 5–10 kB gzip target. No runtime dependency was added; Playwright/browser downloads and the test Chart.js copy are in temporary QA storage only.
 
 Contrast ratios against the card surface `#111a2b`, computed from sRGB relative luminance:
 
