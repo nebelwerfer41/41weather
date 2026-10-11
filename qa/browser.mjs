@@ -48,7 +48,7 @@ const server = createServer(async (req, res) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const json = body => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-async function prepare(browser, { width = 390, denied = false, touch = false, deferred = false, colorScheme = 'dark', expectedEmpty = false, weatherData = weather } = {}) {
+async function prepare(browser, { width = 390, denied = false, touch = false, deferred = false, colorScheme = 'dark', expectedEmpty = false, weatherData = weather, astronomyData = astronomy } = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: touch, colorScheme });
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -64,7 +64,7 @@ async function prepare(browser, { width = 390, denied = false, touch = false, de
         } else Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.qaCopied = text; } } });
     }, { denied });
     const dates = [...new Set(weatherData.timeseries.map(t => t.slice(0, 10)))];
-    const solarData = { days: dates.map(date => Object.fromEntries(Object.entries(astronomy.days[0]).map(([key, value]) => [key, typeof value === 'string' ? value.replaceAll('2026-10-12', date) : value]))) };
+    const solarData = { days: dates.map(date => Object.fromEntries(Object.entries(astronomyData.days[0]).map(([key, value]) => [key, typeof value === 'string' ? value.replaceAll('2026-10-12', date) : value]))) };
     let releaseSun, releaseMarine;
     const sunGate = deferred ? new Promise(resolve => releaseSun = resolve) : Promise.resolve();
     const marineGate = deferred ? new Promise(resolve => releaseMarine = resolve) : Promise.resolve();
@@ -140,6 +140,9 @@ async function run(name, browser) {
     assert.equal(await page.locator('#sel').isVisible(), false);
     await page.locator('.metadata summary').click();
     assert.equal(await page.locator('#sel').isVisible(), true);
+    assert.equal(await page.locator('footer #time-zone').count(), 1);
+    assert.match(await page.locator('#time-zone').textContent(), /Europe\/Rome \(GMT\+2\)/);
+    assert.doesNotMatch(await page.locator('main').textContent(), /GMT|offset UTC/);
     await first.context.close();
     for (const width of [320, 390, 768, 1440]) {
         const current = await prepare(browser, { width, touch: width <= 390, weatherData: weekWeather });
@@ -148,11 +151,43 @@ async function run(name, browser) {
         assert.equal(await current.page.locator('#forecast-range').textContent(), '12 – 17 ottobre');
         assert.ok(await current.page.evaluate(() => window.qaChart.data.datasets.every(d => d.data.every(p => p.x < Date.parse('2026-10-18T00:00:00Z')))));
         await current.page.screenshot({ path: `${output}/${name}-week-${width}.png`, fullPage: false });
+        if (width >= 768) {
+            await current.page.locator('.week-day').first().hover();
+            await current.page.locator('#week').screenshot({ path: `${output}/${name}-week-hover-${width}.png`, animations: 'disabled' });
+            await current.page.mouse.move(0, 0);
+        }
         await current.page.locator('.astronomy h4').first().waitFor({ state: 'attached' });
         if (width <= 390) await current.page.locator('.hourly summary').first().tap();
         else { await current.page.locator('.hourly summary').first().focus(); await current.page.keyboard.press('Space'); }
         await current.page.waitForFunction(() => document.querySelector('.hourly').open);
         await assertLayout(current.page, width);
+        assert.equal(await current.page.locator('.astro-reading').first().locator('dt').textContent(), 'Alba');
+        assert.equal(await current.page.locator('.astronomy').first().locator('.astro-reading').count(), 4);
+        assert.ok(await current.page.locator('.hourly-note').first().evaluate(note => note.previousElementSibling.classList.contains('table')));
+        const trigger = current.page.locator('.twilight-trigger').first();
+        const tooltip = current.page.locator('.twilight-tooltip').first();
+        assert.equal(await tooltip.isVisible(), false);
+        if (width <= 390) {
+            await trigger.tap(); assert.equal(await tooltip.isVisible(), true);
+            assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
+            await trigger.tap(); assert.equal(await tooltip.isVisible(), false);
+            await trigger.tap(); assert.equal(await tooltip.isVisible(), true);
+            await current.page.locator('.astronomy h4').first().tap(); assert.equal(await tooltip.isVisible(), false);
+        } else {
+            await trigger.hover(); assert.equal(await tooltip.isVisible(), true);
+            await current.page.mouse.move(0, 0); assert.equal(await tooltip.isVisible(), false);
+        }
+        await current.page.locator('.hourly summary').first().focus();
+        await trigger.focus(); assert.equal(await tooltip.isVisible(), true);
+        assert.match(await tooltip.textContent(), /CivileMattino 06:45Sera 19:00NauticoMattino —Sera —AstronomicoMattino —Sera —/);
+        const bounds = await tooltip.boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, JSON.stringify(bounds));
+        assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 901, JSON.stringify(bounds));
+        await current.page.screenshot({ path: `${output}/${name}-twilight-${width}.png`, fullPage: false });
+        await current.page.keyboard.press('Escape'); assert.equal(await tooltip.isVisible(), false);
+        assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+        await current.page.locator('.hourly summary').first().focus();
+        await current.page.locator('.day-card').first().screenshot({ path: `${output}/${name}-hourly-card-${width}.png` });
         await current.page.screenshot({ path: `${output}/${name}-${width}.png`, fullPage: true });
         const beforeTheme = await current.page.evaluate(() => ({ fetches: window.qaFetches, charts: window.qaCharts, text: document.querySelector('.forecast').textContent }));
         await current.page.locator('#themeToggle').click();
@@ -161,6 +196,11 @@ async function run(name, browser) {
         assert.ok(await current.page.evaluate(() => { const cell = document.querySelector('td.marine-cell'), normal = document.querySelector('td.temp'); return getComputedStyle(cell).backgroundColor !== getComputedStyle(normal).backgroundColor && window.qaChart.data.datasets[0].borderColor === getComputedStyle(document.documentElement).getPropertyValue('--temperature').trim(); }));
         await assertLayout(current.page, width);
         await current.page.screenshot({ path: `${output}/${name}-light-${width}.png`, fullPage: true });
+        if (width >= 768) {
+            await current.page.locator('.week-day').first().hover();
+            await current.page.locator('#week').screenshot({ path: `${output}/${name}-week-hover-light-${width}.png`, animations: 'disabled' });
+            await current.page.mouse.move(0, 0);
+        }
         await current.page.locator('.table').first().evaluate(table => table.scrollLeft = table.scrollWidth);
         await current.page.locator('.table').first().scrollIntoViewIfNeeded();
         await current.page.screenshot({ path: `${output}/${name}-marine-light-${width}.png`, fullPage: false });
@@ -178,6 +218,46 @@ async function run(name, browser) {
         }
         assert.deepEqual(current.errors, []); await current.context.close();
     }
+    // Reproduce the reported squeezed phase name with a fractional percentage
+    // and larger text near the desktop/mobile breakpoint.
+    const newMoon = { days: [{ ...astronomy.days[0], moon_phase: 'New Moon', moon_illumination: 3.4 }] };
+    for (const width of [320, 640, 768]) {
+        const current = await prepare(browser, { width, astronomyData: newMoon });
+        await current.page.locator('.lunar-phase-name').first().waitFor({ state: 'attached' });
+        await current.page.evaluate(() => document.documentElement.style.fontSize = '20px');
+        await current.page.locator('.hourly summary').first().click();
+        assert.equal(await current.page.locator('.lunar-phase-name').first().textContent(), 'Luna nuova');
+        assert.equal(await current.page.locator('.lunar-percentage').first().textContent(), '3,4%');
+        const fragments = await current.page.locator('.lunar-phase-name').first().evaluate(name => {
+            const text = name.firstChild;
+            return [...text.textContent.matchAll(/\S+/g)].map(word => {
+                const range = document.createRange();
+                range.setStart(text, word.index); range.setEnd(text, word.index + word[0].length);
+                return range.getClientRects().length;
+            });
+        });
+        assert.deepEqual(fragments, [1, 1], 'Phase words must stay intact, rather than wrap one letter per line');
+        assert.ok(await current.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        await current.page.locator('.astronomy').first().screenshot({ path: `${output}/${name}-new-moon-large-text-${width}.png` });
+        assert.deepEqual(current.errors, []); await current.context.close();
+    }
+    const dstWeather = structuredClone(fixture);
+    dstWeather.timeseries = Array.from({ length: 25 }, (_, i) => new Date(Date.parse('2026-10-24T22:00:00Z') + i * 3600000).toISOString());
+    for (const [key, values] of Object.entries(dstWeather.datasets['0']))
+        dstWeather.datasets['0'][key] = Object.fromEntries(dstWeather.timeseries.map((_, i) => [i, values[i % 12]]));
+    dstWeather.extrainfo.stats = [{ ...fixture.extrainfo.stats[0], localDate: '2026-10-25T00:00:00+02:00' }];
+    const dst = await prepare(browser, { weatherData: dstWeather });
+    await dst.page.locator('.hourly summary').first().click();
+    const repeatedClocks = await dst.page.locator('tbody td:first-child').allTextContents();
+    assert.equal(repeatedClocks.filter(t => t === '02:00¹').length, 1);
+    assert.equal(repeatedClocks.filter(t => t === '02:00²').length, 1);
+    assert.doesNotMatch(await dst.page.locator('main').textContent(), /GMT|offset UTC/);
+    await dst.page.locator('footer .metadata summary').click();
+    assert.match(await dst.page.locator('#time-zone').textContent(), /GMT\+2 \/ GMT\+1.*02:00¹ GMT\+2, 02:00² GMT\+1/);
+    const repeatedTips = await dst.page.evaluate(times => times.map(time => window.qaChart.options.plugins.tooltip.callbacks.title([{ parsed: { x: time } }])), dstWeather.timeseries.slice(2, 4).map(Date.parse));
+    assert.match(repeatedTips[0], /02:00¹$/); assert.match(repeatedTips[1], /02:00²$/);
+    assert.ok(repeatedTips.every(t => !t.includes('GMT')));
+    assert.deepEqual(dst.errors, []); await dst.context.close();
     const missingTailData = structuredClone(weather); missingTailData.extrainfo.stats.at(-1).icon = '-';
     const missingTail = await prepare(browser, { weatherData: missingTailData });
     assert.equal(await missingTail.page.locator('.day-card').count(), 1);

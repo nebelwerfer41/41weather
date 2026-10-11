@@ -1,4 +1,5 @@
 import { dateKey, timezone, iconSemantics } from './meteoam-data.js';
+import { timeDisplay } from './time-display.js';
 
 // Editorial conventions, not MeteoAM thresholds or meteorological confidence.
 export const DEFAULT_RULES = Object.freeze({
@@ -167,16 +168,86 @@ export function analyzeForecast(snapshot = {}, { rules: custom } = {}) {
 }
 
 const sentence = s => s ? `${s[0].toUpperCase()}${s.slice(1)}.` : '';
-const bandText = bands => bands.map(b => ({ notte: 'nella notte', mattino: 'al mattino', pomeriggio: 'nel pomeriggio', sera: 'in serata' })[b] ?? `nella fascia ${b}`).join(' e ');
-function windowText(fact, tz) {
+const listText = items => items.length > 1 ? `${items.slice(0, -1).join(', ')} e ${items.at(-1)}` : items[0] ?? '';
+const bandText = bands => listText(bands.map(b => ({ notte: 'nella notte', mattino: 'al mattino', pomeriggio: 'nel pomeriggio', sera: 'in serata' })[b] ?? `nella fascia ${b}`));
+const precipitationLabels = new Set(['pioggia', 'temporale', 'pioggia e neve', 'pioggia congelantesi', 'grandine', 'neve']);
+function windowText(fact, tz, marker) {
     const clock = time => {
         const p = localParts(time, tz);
-        return `${String(p.hour).padStart(2, '0')}${p.minute ? `:${String(p.minute).padStart(2, '0')}` : ''}`;
+        return `${String(p.hour).padStart(2, '0')}${p.minute ? `:${String(p.minute).padStart(2, '0')}` : ''}${marker(time)}`;
     };
     if (fact.start === fact.end) return `alle ${clock(fact.start)}`;
-    const a = localParts(fact.start, tz), b = localParts(fact.end, tz);
-    const offset = a.offset !== b.offset;
-    return `tra le ${clock(fact.start)}${offset ? ` ${a.offset}` : ''} e le ${clock(fact.end)}${offset ? ` ${b.offset}` : ''}`;
+    return `tra le ${clock(fact.start)} e le ${clock(fact.end)}`;
+}
+function phenomenonText(phenomena, rules, tz, detailed = false, marker = () => '') {
+    const groups = new Map();
+    for (const f of phenomena) {
+        const placement = detailed ? windowText(f, tz, marker) : '';
+        const lowProbability = !detailed && f.probability.length > 0 && f.probability.every(p => p < rules.possible) &&
+            !['foschia', 'nebbia', 'fumo', 'tempesta di sabbia'].includes(f.label);
+        const key = JSON.stringify([placement, f.intermittent, lowProbability]);
+        if (!groups.has(key)) groups.set(key, { labels: [], placement, intermittent: f.intermittent, lowProbability });
+        groups.get(key).labels.push(f.label);
+    }
+    return [...groups.values()].map(group => `${listText(group.labels)}${group.intermittent ? ' a tratti' : ''}${group.placement ? ` ${group.placement}` : ''}${group.lowProbability ? ' (probabilità di precipitazione bassa)' : ''}`);
+}
+function bandPhenomena(phenomena, band, hours, rules) {
+    return phenomena.filter(f => f.bands.includes(band)).map(f => {
+        const samples = f.samples.filter(h => h.band === band);
+        const start = samples[0].time, end = samples.at(-1).time;
+        // Check pauses within this band: gaps elsewhere must not affect its wording.
+        const between = hours.filter(h => h.time >= start && h.time <= end);
+        const intermittent = between.some(h => iconSemantics(h.icon) && !iconSemantics(h.icon).phenomenon) &&
+            between.every((h, i) => iconSemantics(h.icon) &&
+                (!i || [1, rules.maxStepHours].includes((h.time - between[i - 1].time) / HOUR)));
+        return { ...f, samples, start, end, intermittent,
+            probability: samples.filter(h => validProbability(h.probability)).map(h => h.probability) };
+    });
+}
+function probabilityText(f) {
+    const positives = f.samples.map(h => h.probability).filter(p => validProbability(p) && p > 0);
+    const min = Math.min(...positives);
+    return `probabilità ${probabilityNumber(min)}${min !== f.max ? `–${probabilityNumber(f.max)}` : ''}%`;
+}
+function compactEventText(phenomena, changes, rules, tz) {
+    const events = [...phenomena.map(f => ({ fact: f, start: f.start, end: f.end, phenomenon: true })),
+        ...changes.map(f => ({ fact: f, start: Math.min(...f.localSamples), end: Math.min(...f.localSamples) }))]
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+    const groups = [];
+    for (const event of events) {
+        const last = groups.at(-1);
+        // Interleaved occurrences cannot be described as one event followed by another.
+        if (last && event.start <= last.end) {
+            last.events.push(event);
+            last.end = Math.max(last.end, event.end);
+        } else groups.push({ events: [event], end: event.end });
+    }
+    return groups.map(group => group.events.map(event => {
+        const f = event.fact;
+        const text = event.phenomenon ? phenomenonText([f], rules, tz)[0] : f.label;
+        return `${text}${group.events.length > 1 ? ` ${bandText(f.bands)}` : ''}`;
+    }).join('; ')).join(', poi ');
+}
+function periodSentences({ rules, tz, phenomena, probability, changes, coverage }, detailed) {
+    const groups = [];
+    const marker = detailed ? timeDisplay(coverage.samples, tz).marker : () => '';
+    let previous = null;
+    for (const band of rules.bands) {
+        const local = bandPhenomena(phenomena, band.name, coverage.samples, rules);
+        const parts = [...changes.filter(f => f.bands.includes(band.name)).map(f => f.label),
+            ...phenomenonText(local, rules, tz, detailed, marker)];
+        const chance = probability.find(f => f.band === band.name);
+        let qualifier = '';
+        if (detailed && chance?.max > 0) qualifier = probabilityText(chance);
+        else if (!detailed && chance && chance.level !== 'low' && !local.some(f => precipitationLabels.has(f.label)))
+            parts.push(chance.level === 'probable' ? 'precipitazioni probabili' : 'possibili precipitazioni');
+        const content = `${listText(parts)}${qualifier ? `${parts.length ? '; ' : ''}${qualifier}` : ''}`;
+        if (!content) { previous = null; continue; }
+        // Merge only adjacent equivalent bands; never bridge an empty period.
+        if (previous?.content === content) previous.bands.push(band.name);
+        else { previous = { bands: [band.name], content }; groups.push(previous); }
+    }
+    return groups.map(group => sentence(`${bandText(group.bands)}${detailed ? ': ' : ' '}${group.content}`));
 }
 export function renderForecast(daySummary, { verbosity = 'standard', includeTemperature = false } = {}) {
     if (!daySummary?.facts) return 'Dati atmosferici non disponibili.';
@@ -188,47 +259,28 @@ export function renderForecast(daySummary, { verbosity = 'standard', includeTemp
     const phenomena = find('phenomenon'), probability = find('probability');
     const mainProbability = probability.filter(f => f.level !== 'low');
     // Select the largest supported change in each direction, in temporal order.
-    const changes = find('evolution').filter(f => f.selected).sort((a, b) => a.start - b.start);
-    const evolution = changes.map(f => f.label);
+    const changes = find('evolution').filter(f => f.selected).sort((a, b) => Math.min(...a.localSamples) - Math.min(...b.localSamples));
     const sky = find('sky')[0];
     const veils = find('veils');
     const veilText = veils.some(f => f.label === 'velature') ? 'velature' : veils.length ? 'velature parziali' : '';
     const sentences = [];
-    const phenomenonGroups = new Map();
-    for (const f of phenomena) {
-        const placement = level === 'standard' ? bandText(f.bands) : level === 'detailed' ? windowText(f, tz) : '';
-        const lowProbability = f.probability.length > 0 && f.probability.every(p => p < rules.possible) &&
-            !['foschia', 'nebbia', 'fumo', 'tempesta di sabbia'].includes(f.label);
-        const key = JSON.stringify([placement, f.intermittent, lowProbability]);
-        if (!phenomenonGroups.has(key)) phenomenonGroups.set(key, { labels: [], placement, intermittent: f.intermittent, lowProbability });
-        phenomenonGroups.get(key).labels.push(f.label);
-    }
-    const phenomenonSentences = [...phenomenonGroups.values()].map(group => {
-        const labels = group.labels.length > 1 ? `${group.labels.slice(0, -1).join(', ')} e ${group.labels.at(-1)}` : group.labels[0];
-        let text = `${labels}${group.intermittent ? ' a tratti' : ''}${group.placement ? ` ${group.placement}` : ''}`;
-        if (group.lowProbability) text += '; probabilità di precipitazione bassa';
-        return sentence(text);
-    });
+    const compactEvents = () => compactEventText(phenomena, changes, rules, tz);
     if (level === 'title') {
-        if (phenomena.length) sentences.push(phenomenonSentences.join(' '));
+        if (phenomena.length) sentences.push(sentence(compactEvents()));
         else if (mainProbability.length) sentences.push(sentence(`${mainProbability.some(f => f.level === 'probable') ? 'precipitazioni probabili' : 'possibili precipitazioni'} ${bandText(mainProbability.map(f => f.band))}`));
-        else if (evolution.length) sentences.push(sentence(evolution.join(', ')));
+        else if (changes.length) sentences.push(sentence(compactEvents()));
         else if (sky) sentences.push(sentence(sky.mixed ? 'cielo variabile' : sky.label));
         else if (veilText) sentences.push(sentence(veilText));
     } else {
         const skyText = [sky ? sky.mixed ? 'cielo variabile' : sky.label : '', veilText].filter(Boolean);
-        for (const f of changes) skyText.push(`${f.label}${level === 'standard' || level === 'detailed' ? ` ${bandText(f.bands)}` : ''}`);
         if (skyText.length) sentences.push(sentence([...new Set(skyText)].join(', ')));
-        sentences.push(...phenomenonSentences);
-        if (level === 'detailed') {
-            for (const f of probability.filter(f => f.max > 0)) {
-                const positives = f.samples.map(h => h.probability).filter(p => validProbability(p) && p > 0);
-                const min = Math.min(...positives);
-                sentences.push(sentence(`probabilità${f.min === 0 ? ' positiva' : ''} ${probabilityNumber(min)}${min !== f.max ? `–${probabilityNumber(f.max)}` : ''}% ${bandText([f.band])}`));
-            }
+        if (level === 'standard' || level === 'detailed') {
+            sentences.push(...periodSentences({ rules, tz, phenomena, probability, changes, coverage }, level === 'detailed'));
         } else {
+            if (phenomena.length || changes.length) sentences.push(sentence(compactEvents()));
             for (const probabilityLevel of ['possible', 'probable']) {
-                const selected = mainProbability.filter(f => f.level === probabilityLevel);
+                const selected = mainProbability.filter(f => f.level === probabilityLevel &&
+                    !phenomena.some(p => precipitationLabels.has(p.label) && p.bands.includes(f.band)));
                 if (selected.length) sentences.push(sentence(`${probabilityLevel === 'probable' ? 'precipitazioni probabili' : 'possibili precipitazioni'} ${bandText(selected.map(f => f.band))}`));
             }
         }

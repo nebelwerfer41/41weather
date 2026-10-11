@@ -40,3 +40,13 @@ Reproduce with the temporary-install commands in README. Screenshots are written
 
 
 Additional contrast measurements for the light palette (on white unless specified): main text 15.25:1, muted text 6.44:1, accent 6.13:1, temperature 5.31:1. Marine text is 6.18:1 on the light marine body and 5.47:1 on its header; dark marine text is 9.07:1 on its body and 7.41:1 on its header.
+
+## Hourly-detail update — 12 October 2026
+
+- `npm test`: **41 passed**; `node --check ui.js`, `node --check qa/browser.mjs` and `git diff --check` passed.
+- Full browser QA passed in Chrome **155.0.8059.40** and Playwright WebKit **27.2**, at 320/390/768/1440 px, in both themes. Astronomy groups moonrise/moonset with the phase and its subdued illumination percentage, beside solar times on desktop and below them on mobile; the probability/missing-data note follows the hourly table.
+- Twilight tooltip checks cover mouse hover, keyboard focus/Escape, touch toggle, outside-tap dismissal and missing times. Tooltip bounds stay within the viewport, including upward placement near the bottom. Existing table scrolling/sticky measurements and enrichment/state-preservation checks still pass.
+- New screenshots (`*-hourly-card-*.png` and `*-twilight-*.png`) were generated in `/tmp/41weather-qa-hourly` and, after enlarging the lunar-phase tile, `/tmp/41weather-qa-lunar`. Chrome desktop/mobile card and tooltip screenshots were inspected visually. This remains browser-emulated touch QA, without a physical-device or screen-reader audit.
+- After regrouping lunar data, the full suite passed again in both browsers. A regression reproduces “Luna nuova” with 3.4% illumination and 20 px base text at 320/640/768 px, checking that each phase word stays intact and the page has no horizontal overflow. New screenshots are in `/tmp/41weather-qa-lunar-group`; Chrome 390 px and the 640 px enlarged-text regression were visually inspected.
+- After moving timezone information to the footer, 41 Node tests and the full Chrome/WebKit suite passed. Browser checks cover suffix-free local clocks, footer placement and a complete 25-hour day on 25 October 2026: both 02:00 occurrences remain distinct in table/prose/chart tooltips via ¹/² references, with GMT+2/GMT+1 explained in the footer. Screenshots are in `/tmp/41weather-qa-time-footer`; Chrome mobile details and the enlarged-text lunar regression were visually inspected.
+- Final pre-push validation passed with the clearer weekly-day hover: 41 Node tests and the complete Chrome/WebKit suite. Dark/light hover screenshots at 768/1440 px are in `/tmp/41weather-qa-before-push`; both Chrome 1440 px hover states were visually inspected.

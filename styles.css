@@ -83,8 +83,8 @@ main > section { min-width: 0; }
 .detail-control select { min-width: 130px; padding-right: 2rem; font-size: .875rem; }
 .week-grid { display: grid; grid-template-columns: repeat(var(--week-days, 7), minmax(0, 1fr)); padding: var(--space-2); margin-bottom: var(--space-4); background: var(--surface-week); border: 1px solid var(--border); border-radius: 20px; gap: .3rem; }
 .week-grid:empty { display: none; }
-.week-day { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-width: 0; gap: .5rem; padding: .75rem .5rem; color: var(--text); text-decoration: none; border-radius: 12px; }
-.week-day:hover, .week-day:focus-visible { background: var(--surface-raised); }
+.week-day { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-width: 0; gap: .5rem; padding: .75rem .5rem; color: var(--text); text-decoration: none; border-radius: 12px; transition: background-color 140ms ease, box-shadow 140ms ease; }
+.week-day:hover, .week-day:focus-visible { background: color-mix(in srgb, var(--surface-raised) 88%, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .week-date { display: flex; align-items: baseline; justify-content: center; gap: .4rem; }
 .week-weekday { color: var(--muted); font-size: .8125rem; text-transform: capitalize; }
 .week-number { font-size: 1.05rem; font-weight: 650; }
@@ -127,11 +127,29 @@ main > section { min-width: 0; }
 summary { cursor: pointer; padding: .6rem .25rem; min-height: 44px; color: var(--muted); font-size: .8125rem; font-weight: 500; }
 summary:hover { color: var(--text); }
 .day-details { padding-top: var(--space-3); border-top: 1px solid var(--border); min-width: 0; }
-.coverage-details { margin-bottom: var(--space-3); }
+.coverage-details { display: flex; flex-wrap: wrap; gap: .2rem var(--space-3); margin-bottom: var(--space-3); }
 .astronomy { padding-bottom: var(--space-3); }
-.astronomy p { margin-top: .4rem; }
-.twilight { display: grid; grid-template-columns: max-content 1fr; gap: .2rem var(--space-3); font-size: var(--small); color: var(--muted); margin: .7rem 0 0; }
+.astronomy-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.astro-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; gap: var(--space-3); margin: var(--space-1) 0 0; }
+.astro-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-3); margin: 0; }
+.solar-readings { padding-top: var(--space-2); }
+.astro-reading dt { font-size: .75rem; color: var(--muted); }
+.astro-reading dd { margin: .15rem 0 0; font-size: .875rem; overflow-wrap: anywhere; }
+.lunar-reading { display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); }
+.lunar-title { margin: 0; font-size: .75rem; color: var(--muted); font-weight: 400; }
+.lunar-phase { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .6rem; min-width: 0; }
+.lunar-phase-symbol { flex-shrink: 0; font-size: 2rem; line-height: 1.2; }
+.lunar-phase-description { font-size: 1rem; line-height: 1.5; overflow-wrap: normal; word-break: normal; }
+.lunar-percentage { margin-left: .5rem; font-size: .8125rem; color: var(--muted); white-space: nowrap; }
+.twilight-info { position: relative; flex-shrink: 0; }
+.twilight-trigger { min-height: 44px; padding: .4rem .5rem; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: .75rem; }
+.twilight-trigger:hover, .twilight-trigger[aria-expanded="true"] { color: var(--text); background: var(--surface-raised); }
+.twilight-tooltip { position: absolute; top: 100%; right: 0; width: min(25rem, calc(100vw - 4rem)); padding: var(--space-3); border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); box-shadow: 0 8px 24px #0003; z-index: 6; }
+.twilight-tooltip.above { top: auto; bottom: 100%; }
+.twilight { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-3); font-size: .75rem; color: var(--muted); margin: 0; }
+.twilight dt { color: var(--text); }
 .twilight dd { margin: 0; }
+.twilight dd span { display: block; overflow-wrap: anywhere; }
 .table { width: 100%; max-width: 100%; overflow: auto; max-height: 560px; margin-top: var(--space-2); border: 1px solid var(--border); border-radius: 8px; scrollbar-width: thin; }
 table { width: max-content; min-width: 100%; border-spacing: 0; font-size: var(--small); }
 th, td { padding: .65rem .75rem; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: right; }
@@ -146,6 +164,7 @@ th.marine-cell { background: var(--marine-header); color: var(--marine-text); bo
 .weather-symbol { font-size: 1.15rem; }
 .temp { color: var(--temperature); }
 .rain { color: var(--accent); }
+.hourly-note { margin-top: var(--space-2); }
 .marine-state { margin-top: var(--space-2); }
 .chart-section h2 { font-size: 1.1rem; }
 canvas { max-width: 100%; }
@@ -196,8 +215,7 @@ footer { padding-top: 0; color: var(--muted); font-size: var(--small); overflow-
     .condition-label { font-size: .75rem; }
     .forecast { font-size: 1rem; margin-top: var(--space-3); }
     .astro-summary { font-size: .6875rem; }
-    .twilight { grid-template-columns: 1fr; gap: 0; }
-    .twilight dd { margin-bottom: .35rem; }
+    .astro-grid { grid-template-columns: minmax(0, 1fr); }
     th, td { padding: .6rem .5rem; }
     .chart-container { height: 270px; }
 }

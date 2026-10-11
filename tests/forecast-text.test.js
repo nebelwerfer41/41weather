@@ -55,7 +55,7 @@ test('all significant phenomena survive every level, including low or absent pro
         assert.doesNotMatch(text(s, 'detailed'), /allerta|raffiche/);
     }
     const low = snapshot([{ icon: '10', probability: 10 }]);
-    assert.match(text(low), /Temporale/); assert.match(text(low), /probabilità.*bassa/);
+    assert.match(text(low), /temporale/i); assert.match(text(low), /probabilità.*bassa/);
     assert.doesNotMatch(text(snapshot([{ icon: '10' }])), /bassa/);
 });
 test('title retains multiple significant phenomena instead of choosing only one', () => {
@@ -76,7 +76,7 @@ test('sustained sky changes require two points on both sides and retain evidence
     const s = snapshot([{ hour: 9, icon: '04' }, { hour: 10, icon: '04' }, { hour: 13, icon: '05' }, { hour: 16, icon: '05' }]);
     const f = facts(s, 'evolution')[0];
     assert.equal(f.label, 'nubi in aumento'); assert.equal(f.samples.length, 4);
-    assert.match(text(s), /nubi in aumento nel pomeriggio/);
+    assert.match(text(s), /Nel pomeriggio nubi in aumento/);
     assert.deepEqual(f.precision.stepHours, [1, 3]); assert.equal(f.precision.extendsLastSample, false);
 });
 test('unknown icons and large holes break evolution and are not observed pauses', () => {
@@ -119,7 +119,7 @@ test('truncated last day reports only available period and sampled temperature f
     s.days[0].sampledExtremes = false; s.days[0].max = 12;
     assert.match(text(s, 'detailed', true), /massima 12 °C/);
 });
-test('DST day lengths are 23 and 25 hours and duplicate hours expose UTC offsets', () => {
+test('DST day lengths are 23 and 25 hours and duplicate hours have distinct references', () => {
     for (const [start, count] of [['2026-03-28T23:00:00Z', 23], ['2026-10-24T22:00:00Z', 25]]) {
         const s = snapshot(Array.from({ length: count }, (_, hour) => ({ hour, icon: '01' })), 'Europe/Rome', Date.parse(start));
         const days = analyzeForecast(s); assert.equal(days.size, 1);
@@ -127,12 +127,13 @@ test('DST day lengths are 23 and 25 hours and duplicate hours expose UTC offsets
         assert.equal(coverage.dayHours, count); assert.equal(coverage.partial, false);
     }
     const s = snapshot([{ icon: '10' }, { icon: '10' }], 'Europe/Rome', Date.parse('2026-10-25T00:00:00Z'));
-    assert.match(text(s, 'detailed'), /02 GMT\+2.*02 GMT\+1/);
+    assert.match(text(s, 'detailed'), /02¹.*02²/);
+    assert.doesNotMatch(text(s, 'detailed'), /GMT|UTC/);
 });
 test('fractional timezone determines dates and bands independently of device timezone', () => {
     const s = snapshot([{ icon: '10' }], 'Asia/Kathmandu', Date.parse('2026-10-11T20:00:00Z'));
     const day = summary(s); assert.equal(day.date, '2026-10-12');
-    assert.match(renderForecast(day), /nella notte/);
+    assert.match(renderForecast(day), /Nella notte temporale/);
     assert.match(renderForecast(day, { verbosity: 'detailed' }), /01:45/);
 });
 test('circular directions, calm, dispersion, absent and partial direction are distinct', () => {
@@ -178,7 +179,8 @@ test('real MeteoAM sample with positive probabilities uses the same normalized m
 test('zero probabilities are omitted only from prose; mixed ranges describe positive samples', () => {
     const s = snapshot([{ hour: 12, probability: 0 }, { hour: 13, probability: 30 }]);
     const rendered = text(s, 'detailed');
-    assert.match(rendered, /probabilità positiva 30%/i);
+    assert.match(rendered, /probabilità 30%/i);
+    assert.doesNotMatch(rendered, /positiva/i);
     assert.doesNotMatch(rendered, /0–30|probabilità 0%|campionato 0%/i);
     assert.equal(s.hours[0].probability, 0);
     for (const level of ['title', 'brief', 'standard', 'detailed']) assert.doesNotMatch(text(snapshot([{ probability: 0, icon: '01' }]), level), /probabilità/i);
@@ -198,20 +200,130 @@ test('veils are deduplicated and no level mentions samples or coverage boilerpla
 test('positive fractional probability is not rounded to zero; temperature matches UI rounding', () => {
     const s = snapshot([{ probability: 0.4 }]);
     s.days[0].min = -0.5; s.days[0].max = 0.5;
-    assert.match(text(s, 'detailed', true), /Probabilità 0,4%/);
+    assert.match(text(s, 'detailed', true), /probabilità 0,4%/i);
     assert.match(text(s, 'detailed', true), /minima -1 °C, massima 1 °C/);
 });
 
 test('phenomena use direct names and group only compatible time and probability facts', () => {
     const together = snapshot([{ hour: 6, icon: '08' }, { hour: 7, icon: '13' }]);
-    assert.equal(text(together, 'title'), 'Pioggia e foschia.');
-    assert.equal(text(together, 'brief'), 'Pioggia e foschia.');
-    assert.equal(text(together, 'standard'), 'Pioggia e foschia al mattino.');
-    assert.equal(text(together, 'detailed'), 'Pioggia alle 06. Foschia alle 07.');
+    assert.equal(text(together, 'title'), 'Pioggia, poi foschia.');
+    assert.equal(text(together, 'brief'), 'Pioggia, poi foschia.');
+    assert.equal(text(together, 'standard'), 'Al mattino pioggia e foschia.');
+    assert.equal(text(together, 'detailed'), 'Al mattino: pioggia alle 06 e foschia alle 07.');
     const separate = snapshot([{ hour: 6, icon: '08', probability: 10 }, { hour: 15, icon: '13' }]);
-    assert.match(text(separate), /Pioggia al mattino; probabilità di precipitazione bassa\. Foschia nel pomeriggio\./);
+    assert.match(text(separate), /Al mattino pioggia \(probabilità di precipitazione bassa\)\. Nel pomeriggio foschia\./);
     for (const level of ['title', 'brief', 'standard', 'detailed']) {
         assert.doesNotMatch(text(together, level), /indicazione di|segnale di/i);
         assert.doesNotMatch(text(snapshot([{ icon: '13' }]), level), /indicazione di|segnale di/i);
     }
+});
+
+test('periods combine phenomena and omit duplicate precipitation wording', () => {
+    const s = snapshot([
+        { hour: 4, icon: '10', probability: 30 }, { hour: 5, icon: '08', probability: 30 },
+        { hour: 6, icon: '08', probability: 60 }, { hour: 7, icon: '01', probability: 0 },
+        { hour: 8, icon: '08', probability: 80 },
+        { hour: 12, icon: '08', probability: 30 }, { hour: 13, icon: '01', probability: 0 },
+        { hour: 14, icon: '08', probability: 60 }
+    ]);
+    assert.equal(text(s), 'Sereno. Nella notte temporale e pioggia. Al mattino e nel pomeriggio pioggia a tratti.');
+    for (const level of ['brief', 'standard']) assert.doesNotMatch(text(s, level), /possibili precipitazioni|precipitazioni probabili/i);
+    const detailed = text(s, 'detailed');
+    assert.match(detailed, /Nella notte: temporale alle 04 e pioggia alle 05; probabilità 30%\./);
+    assert.match(detailed, /Al mattino: pioggia a tratti tra le 06 e le 08; probabilità 60–80%\./);
+    assert.match(detailed, /Nel pomeriggio: pioggia a tratti tra le 12 e le 14; probabilità 30–60%\./);
+    assert.equal((detailed.match(/al mattino/gi) ?? []).length, 1);
+    assert.equal((detailed.match(/probabilità/gi) ?? []).length, 3);
+});
+
+test('probability remains independent of fog and of precipitation in other periods', () => {
+    const s = snapshot([{ hour: 4, icon: '13', probability: 30 }, { hour: 8, icon: '08', probability: 60 },
+        { hour: 14, probability: 80 }]);
+    assert.equal(text(s), 'Nella notte foschia e possibili precipitazioni. Al mattino pioggia. Nel pomeriggio precipitazioni probabili.');
+    assert.match(text(s, 'brief'), /possibili precipitazioni nella notte/i);
+    assert.match(text(s, 'brief'), /precipitazioni probabili nel pomeriggio/i);
+    assert.doesNotMatch(text(s), /foschia.*bassa/);
+});
+
+test('band merging never bridges an empty period or merges different probability ranges', () => {
+    const separated = snapshot([{ hour: 3, icon: '08' }, { hour: 15, icon: '08' }]);
+    assert.equal(text(separated), 'Nella notte pioggia. Nel pomeriggio pioggia.');
+    const chances = snapshot([{ hour: 3, probability: 30 }, { hour: 9, probability: 40 }, { hour: 15, probability: 60 }]);
+    assert.match(text(chances), /Nella notte e al mattino possibili precipitazioni\. Nel pomeriggio precipitazioni probabili\./);
+    assert.match(text(chances, 'detailed'), /Nella notte: probabilità 30%\. Al mattino: probabilità 40%\. Nel pomeriggio: probabilità 60%\./);
+});
+
+test('a pause and low probability qualify only the affected period and phenomenon', () => {
+    const s = snapshot([{ hour: 4, icon: '08', probability: 10 }, { hour: 5, icon: '01' },
+        { hour: 6, icon: '08', probability: 80 }, { hour: 7, icon: '13' }]);
+    assert.equal(text(s), 'Sereno. Nella notte pioggia (probabilità di precipitazione bassa). Al mattino pioggia e foschia.');
+    assert.doesNotMatch(text(s), /a tratti/);
+    assert.match(text(s, 'detailed'), /Nella notte: pioggia alle 04; probabilità 10%\./);
+    assert.match(text(s, 'detailed'), /Al mattino: pioggia alle 06 e foschia alle 07; probabilità 80%\./);
+});
+
+test('cloud evolution shares its period with phenomena and custom bands stay ordered', () => {
+    const s = snapshot([{ hour: 0, icon: '01' }, { hour: 1, icon: '01' },
+        { hour: 2, icon: '06' }, { hour: 3, icon: '06' }, { hour: 4, icon: '13' }]);
+    assert.equal(text(s), 'Cielo variabile. Nella notte nubi in aumento e foschia.');
+    const custom = analyzeForecast(snapshot([{ hour: 6, icon: '08' }, { hour: 18, icon: '08' }]), {
+        rules: { bands: [{ start: 0, end: 12, name: 'prima metà' }, { start: 12, end: 24, name: 'seconda metà' }] }
+    }).values().next().value;
+    assert.equal(renderForecast(custom), 'Nella fascia prima metà e nella fascia seconda metà pioggia.');
+});
+
+test('compact levels link opposing sky changes in their actual order', () => {
+    for (const [icons, expected] of [
+        [['06', '06', '01', '01', '06', '06', '02'], 'Schiarite, poi nubi in aumento.'],
+        [['01', '01', '06', '06', '01', '01', '02'], 'Nubi in aumento, poi schiarite.']
+    ]) {
+        const s = snapshot(icons.map(icon => ({ icon })));
+        assert.equal(text(s, 'title'), expected);
+        assert.equal(text(s, 'brief'), `Cielo variabile, velature parziali. ${expected}`);
+    }
+});
+
+test('compact levels put a storm before or after rain only when the evidence supports it', () => {
+    for (const [icons, expected] of [
+        [['10', '08', '01', '08'], 'Temporale, poi pioggia a tratti.'],
+        [['08', '01', '08', '10'], 'Pioggia a tratti, poi temporale.']
+    ]) {
+        const s = snapshot(icons.map(icon => ({ icon })));
+        assert.equal(text(s, 'title'), expected);
+        assert.equal(text(s, 'brief'), `Sereno. ${expected}`);
+    }
+    const interleaved = snapshot([{ hour: 4, icon: '08' }, { hour: 5, icon: '10' },
+        { hour: 6, icon: '01' }, { hour: 7, icon: '08' }]);
+    for (const level of ['title', 'brief']) {
+        assert.match(text(interleaved, level), /Pioggia a tratti nella notte e al mattino; temporale nella notte\./);
+        assert.doesNotMatch(text(interleaved, level), /poi/);
+    }
+});
+
+test('compact levels place rain relative to clearing instead of making an unordered list', () => {
+    const clearingAfter = snapshot(['08', '06', '06', '01', '01'].map(icon => ({ icon })));
+    assert.equal(text(clearingAfter, 'title'), 'Pioggia, poi schiarite.');
+    assert.equal(text(clearingAfter, 'brief'), 'Cielo variabile. Pioggia, poi schiarite.');
+    const clearingBefore = snapshot(['06', '06', '01', '01', '08'].map(icon => ({ icon })));
+    assert.equal(text(clearingBefore, 'title'), 'Schiarite, poi pioggia.');
+    assert.equal(text(clearingBefore, 'brief'), 'Cielo variabile. Schiarite, poi pioggia.');
+    const spanning = snapshot(['08', '06', '06', '01', '01', '08'].map(icon => ({ icon })));
+    assert.equal(text(spanning, 'title'), 'Pioggia a tratti nella notte; schiarite nella notte.');
+    assert.doesNotMatch(text(spanning, 'brief'), /poi/);
+});
+
+test('compact chronology retains qualifications, local dates and all interleaved events', () => {
+    const low = snapshot([{ icon: '10', probability: 10 }, { icon: '08', probability: 80 }]);
+    assert.equal(text(low, 'title'), 'Temporale (probabilità di precipitazione bassa), poi pioggia.');
+    const s = snapshot(['08', '10', '16', '08', '10', '16', '15'].map(icon => ({ icon })));
+    assert.equal(text(s, 'title'), 'Pioggia nella notte; temporale nella notte; neve nella notte, poi grandine.');
+    const boundary = snapshot([{ hour: 22, icon: '06' }, { hour: 23, icon: '06' },
+        { hour: 24, icon: '01' }, { hour: 25, icon: '01' }, { hour: 26, icon: '08' }]);
+    const next = analyzeForecast(boundary).get('2026-10-13');
+    assert.equal(renderForecast(next, { verbosity: 'title' }), 'Schiarite, poi pioggia.');
+    const after = snapshot([{ icon: '08' }, { icon: '10' }, { icon: '08' }]);
+    const day = summary(after), copy = structuredClone(day);
+    renderForecast(day, { verbosity: 'title' });
+    renderForecast(day, { verbosity: 'brief' });
+    assert.deepEqual(day, copy);
 });
