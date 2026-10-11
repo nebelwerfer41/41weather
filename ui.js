@@ -15,7 +15,10 @@ function el(tag, className, text) {
 function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
 function condition(code) {
     const [emoji, label] = icon(code);
-    return el('span', 'condition', `${emoji} ${label}`);
+    const node = el('span', 'condition');
+    const symbol = el('span', 'day-weather-symbol', emoji); symbol.setAttribute('aria-hidden', 'true');
+    node.append(symbol, el('span', 'condition-label', label));
+    return node;
 }
 const levels = { title: 'Titolo', brief: 'Breve', standard: 'Standard', detailed: 'Dettagliato' };
 const preferenceKey = '41weather.detail';
@@ -25,7 +28,7 @@ $('verbosity').value = verbosity;
 let chart, activeSnapshot, lastHours;
 const cards = new Map();
 export function status(message, error = false) {
-    setText($('status'), message);
+    setText($('status'), message === 'Previsioni caricate.' ? '' : message);
     $('status').classList.toggle('error', error);
 }
 function updateText(card) {
@@ -37,9 +40,20 @@ $('verbosity').addEventListener('change', event => {
     for (const card of cards.values()) updateText(card);
 });
 function createCard(date) {
-    const root = el('article', 'day-card'); root.dataset.date = date;
+    const root = el('article', 'day-card'); root.dataset.date = date; root.id = `day-${date}`; root.tabIndex = -1;
+    const localDate = new Date(`${date}T12:00:00Z`);
+    const weekday = localDate.toLocaleDateString('it-IT', { timeZone: 'UTC', weekday: 'long' });
+    const calendarDate = localDate.toLocaleDateString('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+    const weekLink = el('a', 'week-day'); weekLink.href = `#${root.id}`; weekLink.dataset.date = date;
+    weekLink.setAttribute('aria-label', `Previsione del ${dateLabel(date)}`);
+    const weekDate = el('span', 'week-date');
+    weekDate.append(el('span', 'week-weekday', weekday.slice(0, 3)), el('span', 'week-number', String(localDate.getUTCDate())));
+    const weekWeather = el('span', 'week-condition');
+    const weekTemperature = el('span', 'week-temperatures');
+    weekLink.append(weekDate, weekWeather, weekTemperature);
     const header = el('div', 'day-header');
-    const title = el('h3', 'day-title', dateLabel(date));
+    const title = el('h3', 'day-title', weekday);
+    title.append(el('span', 'day-date', calendarDate));
     const weather = el('div', 'day-condition');
     const temperature = el('div', 'temperatures');
     header.append(title, weather, temperature);
@@ -48,7 +62,7 @@ function createCard(date) {
     const coverageNote = el('p', 'hint coverage-note');
     const secondary = el('div', 'day-secondary');
     const astroSummary = el('p', 'astro-summary hint');
-    const copy = el('button', 'btn ghost copy', 'Copia previsione'); copy.type = 'button';
+    const copy = el('button', 'copy', 'Copia'); copy.type = 'button';
     copy.setAttribute('aria-label', `Copia previsione del ${dateLabel(date)}`);
     secondary.append(astroSummary, copy);
     const copyStatus = el('p', 'hint copy-status'); copyStatus.setAttribute('role', 'status');
@@ -72,9 +86,10 @@ function createCard(date) {
     thead.append(tr);
     const tbody = el('tbody'); table.append(caption, thead, tbody); wrapper.append(table);
     const marineState = el('p', 'hint marine-state');
-    content.append(astro, note, wrapper, marineState); details.append(summary, content);
-    root.append(header, extremes, coverageNote, forecast, secondary, copyStatus, fallbackLabel, fallback, details);
-    const card = { date, root, weather, temperature, extremes, coverageNote, forecast, astroSummary, astro, tbody, wrapper, table, details, marineState, copy, copyStatus, fallback, fallbackLabel, rows: [] };
+    const coverageDetails = el('div', 'coverage-details'); coverageDetails.append(extremes, coverageNote);
+    content.append(coverageDetails, astro, note, wrapper, marineState); details.append(summary, content);
+    root.append(header, forecast, secondary, copyStatus, fallbackLabel, fallback, details);
+    const card = { date, root, weekLink, weekWeather, weekTemperature, weather, temperature, extremes, coverageNote, forecast, astroSummary, astro, tbody, wrapper, table, details, marineState, copy, copyStatus, fallback, fallbackLabel, rows: [] };
     card.sync = () => {
         const width = tr.firstElementChild.getBoundingClientRect().width;
         if (width > 0) wrapper.style.setProperty('--hour-col-width', `${width}px`);
@@ -101,7 +116,19 @@ function createCard(date) {
 }
 function updateAtmosphere(card, day) {
     card.weather.replaceChildren(condition(day.icon));
-    setText(card.temperature, `Min ${value(day.min, '°')} · Max ${value(day.max, '°')}`);
+    const reading = (label, n, className) => {
+        const node = el('span', `temperature-reading ${className}`);
+        node.append(el('span', 'temperature-label', label), el('strong', 'temperature-value', value(n, '°')));
+        return node;
+    };
+    card.temperature.replaceChildren(reading('Max', day.max, 'temperature-high'), reading('Min', day.min, 'temperature-low'));
+    if (day.sampledExtremes) card.temperature.append(el('span', 'temperature-qualifier', 'Estremi parziali'));
+    card.weekWeather.replaceChildren(condition(day.icon));
+    card.weekLink.setAttribute('aria-label', `${dateLabel(day.date)}: ${icon(day.icon)[1]}, massima ${value(day.max, ' °C')}, minima ${value(day.min, ' °C')}${day.sampledExtremes ? ', estremi parziali' : ''}`);
+    const weekMax = el('span', 'week-high', value(day.max, '°')); weekMax.setAttribute('aria-label', `Massima ${value(day.max, ' °C')}`);
+    const weekMin = el('span', 'week-low', value(day.min, '°')); weekMin.setAttribute('aria-label', `Minima ${value(day.min, ' °C')}`);
+    card.weekTemperature.replaceChildren(weekMax, weekMin);
+    if (day.sampledExtremes) card.weekTemperature.append(el('span', 'week-qualifier', 'Parziali'));
     setText(card.extremes, day.sampledExtremes ? 'Estremi parziali della temperatura' : 'Estremi giornalieri del provider');
     updateText(card);
     const coverage = activeSnapshot.forecast?.get(day.date)?.facts.find(f => f.category === 'coverage');
@@ -127,9 +154,11 @@ function updateAstronomy(card, snapshot) {
     const sun = snapshot.astronomy?.get(card.date), tz = snapshot.location.tz;
     if (!sun) {
         const text = `Sole e Luna: ${snapshot.astronomyStatus ?? 'caricamento…'}`;
-        setText(card.astroSummary, text); setText(card.astro, text); return;
+        setText(card.astroSummary, ''); setText(card.astro, text); return;
     }
-    setText(card.astroSummary, `☀ Alba ${clock(sun.sunrise, tz)} · Tramonto ${clock(sun.sunset, tz)} · ${sun.phase.join(' ')}`);
+    const solarClock = time => time == null ? '—' : new Date(time).toLocaleTimeString('it-IT', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+    setText(card.astroSummary, `Alba ${solarClock(sun.sunrise)} · Tramonto ${solarClock(sun.sunset)} · ${sun.phase[0]}`);
+    card.astroSummary.setAttribute('aria-label', `Alba ${solarClock(sun.sunrise)}, tramonto ${solarClock(sun.sunset)}, ${sun.phase[1]}`);
     if (card.sun === sun) return;
     card.sun = sun;
     const heading = el('h4', '', 'Sole e Luna');
@@ -159,12 +188,19 @@ export function render(snapshot) {
         const runs = Object.entries(snapshot.models).map(([model, run]) => `${model}: ${run}`).join(' · ');
         setText($('when'), `Acquisizione: ${timestamp(snapshot.fetchedAt, snapshot.location.tz)}${runs ? ` · Run ${runs}` : ''}`);
         const dates = new Set(snapshot.days.map(d => d.date));
-        for (const [date, card] of cards) if (!dates.has(date)) { card.observer?.disconnect(); card.root.remove(); cards.delete(date); }
+        const rangeDate = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+        const firstDate = snapshot.days[0].date, lastDate = snapshot.days.at(-1).date;
+        setText($('forecast-range'), firstDate === lastDate ? rangeDate(firstDate) : `${firstDate.slice(0, 7) === lastDate.slice(0, 7) ? Number(firstDate.slice(-2)) : rangeDate(firstDate)} – ${rangeDate(lastDate)}`);
+        for (const [name, limit] of [['week-days', 7], ['week-tablet-days', 4], ['week-mobile-days', 3]])
+            $('week').style.setProperty(`--${name}`, Math.min(limit, snapshot.days.length));
+        for (const [date, card] of cards) if (!dates.has(date)) { card.observer?.disconnect(); card.root.remove(); card.weekLink.remove(); cards.delete(date); }
         for (const [index, day] of snapshot.days.entries()) {
             let card = cards.get(day.date);
-            if (!card) { card = createCard(day.date); cards.set(day.date, card); $('days').append(card.root); }
+            if (!card) { card = createCard(day.date); cards.set(day.date, card); $('days').append(card.root); $('week').append(card.weekLink); }
             const current = $('days').children[index];
             if (current !== card.root) $('days').insertBefore(card.root, current ?? null);
+            const currentWeek = $('week').children[index];
+            if (currentWeek !== card.weekLink) $('week').insertBefore(card.weekLink, currentWeek ?? null);
             updateAtmosphere(card, day);
             card.sun = null;
             card.fallback.hidden = card.fallbackLabel.hidden = true; setText(card.copyStatus, '');
@@ -183,7 +219,7 @@ export function render(snapshot) {
 function renderChart(snapshot) {
     chart?.destroy();
     if (typeof Chart === 'undefined') { setText($('chart-state'), 'Grafico non disponibile. Consulta le tabelle orarie.'); return; }
-    setText($('chart-state'), 'Punti = campioni disponibili. I tratti interrotti indicano dati mancanti; i gradini della probabilità collegano campioni senza definire un intervallo statistico.');
+    setText($('chart-state'), '');
     const tz = snapshot.location.tz;
     const axisStamp = time => new Date(time).toLocaleString('it-IT', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const tickTimes = [...new Set(Array.from({ length: 5 }, (_, i) => snapshot.hours[Math.round(i * (snapshot.hours.length - 1) / 4)].time))];

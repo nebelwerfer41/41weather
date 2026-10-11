@@ -20,7 +20,6 @@
     </div>
     <div class="active-location">
       <h2 id="loc">Previsioni</h2>
-      <p id="sel" class="hint"></p>
       <p id="status" class="hint" role="status" aria-live="polite">Caricamento…</p>
     </div>
   </header>
@@ -28,7 +27,7 @@
   <main>
     <section id="forecast" aria-labelledby="forecast-heading">
       <div class="section-header">
-        <div><h2 id="forecast-heading">Previsioni giornaliere</h2><p id="coverage" class="hint"></p></div>
+        <div><p id="forecast-range" class="eyebrow"></p><h2 id="forecast-heading">Meteo della settimana</h2></div>
         <div class="detail-control">
           <label for="verbosity">Dettaglio</label>
           <select id="verbosity">
@@ -39,27 +38,40 @@
           </select>
         </div>
       </div>
+      <nav id="week" class="week-grid" aria-label="Previsioni dei prossimi giorni"></nav>
       <div id="days" class="days"></div>
     </section>
 
     <section class="card chart-section" aria-labelledby="chart-heading">
-      <h2 id="chart-heading">Andamento dei campioni</h2>
+      <h2 id="chart-heading">Andamento meteo</h2>
       <p id="chart-state" class="hint"></p>
       <div class="chart-container">
         <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori e orari disponibili anche nelle tabelle giornaliere"></canvas>
       </div>
+      <details class="chart-info secondary-disclosure">
+        <summary>Come leggere il grafico</summary>
+        <p class="hint">I punti rappresentano gli orari disponibili; le interruzioni indicano dati mancanti. I gradini della probabilità collegano i valori senza definire un intervallo statistico.</p>
+      </details>
     </section>
-    <section class="metadata" aria-label="Fonti e acquisizione">
-      <p id="when" class="hint"></p>
-      <p id="sources" class="hint"></p>
-    </section>
+    <details class="metadata secondary-disclosure">
+      <summary>Informazioni sui dati</summary>
+      <div class="metadata-content">
+        <p id="sel" class="hint"></p>
+        <p id="coverage" class="hint"></p>
+        <p id="when" class="hint"></p>
+        <p id="sources" class="hint"></p>
+      </div>
+    </details>
   </main>
 
   <footer>
-    Made by <a href="https://github.com/nebelwerfer41" target="_blank">nebelwerfer41</a> and released under the MIT license.<br>
+    <details class="secondary-disclosure credits">
+      <summary>Fonti e licenza</summary>
+      <p>Made by <a href="https://github.com/nebelwerfer41" target="_blank">nebelwerfer41</a> and released under the MIT license.<br>
     Informazioni elaborate dal Servizio Meteorologico dell’Aeronautica Militare e pubblicate sul sito <a href="https://www.meteoam.it" target="_blank">www.meteoam.it</a>.<br>
     Sunrise/Sunset and Moon data: <a href="https://sunrise-sunset.org/api">https://sunrise-sunset.org/api</a><br>
-    Location search: <a href="https://open-meteo.com/en/docs/geocoding-api">https://open-meteo.com/en/docs/geocoding-api</a>
+    Location search: <a href="https://open-meteo.com/en/docs/geocoding-api">https://open-meteo.com/en/docs/geocoding-api</a></p>
+    </details>
   </footer>
 
   <!-- Chart.js -->
