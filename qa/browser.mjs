@@ -13,6 +13,9 @@ const weather = structuredClone(fixture);
 weather.timeseries.push(...fixture.timeseries.map(t => new Date(Date.parse(t) + 86400000).toISOString()));
 for (const [key, values] of Object.entries(weather.datasets['0'])) for (let i = 0; i < 12; i++) values[i + 12] = values[i];
 weather.extrainfo.stats.push({ ...fixture.extrainfo.stats[0], localDate: '2026-10-13T00:00:00+02:00' });
+// Synthetic second date has exactly 12 elapsed hours (13 hourly points).
+weather.timeseries.push(new Date(Date.parse(weather.timeseries.at(-1)) + 3600000).toISOString());
+for (const values of Object.values(weather.datasets['0'])) values[24] = values[23];
 const astronomy = { days: ['2026-10-12', '2026-10-13'].map(date => ({ date, sunrise: `${date}T05:15:00Z`, sunset: `${date}T16:30:00Z`, moon_phase: 'Waxing Crescent', moon_illumination: 30, moonrise: `${date}T07:00:00Z`, moonset: `${date}T19:00:00Z`, civil_twilight_begin: `${date}T04:45:00Z`, civil_twilight_end: `${date}T17:00:00Z` })) };
 const marine = { timeseries: fixture.timeseries, paramlist: ['swh'], datasets: { '0': { '0': { '0': 0.5 } } } };
 // Visual scenario: one real day and six explicitly synthetic days with varied
@@ -25,11 +28,12 @@ const weekIcons = ['09', '04', '01', '05', '10', '03', '06'];
 for (let day = 0; day < 7; day++) {
     const date = new Date(Date.parse('2026-10-12T00:00:00Z') + day * 86400000).toISOString().slice(0, 10);
     weekWeather.extrainfo.stats.push({ ...fixture.extrainfo.stats[0], localDate: `${date}T00:00:00+02:00`, icon: weekIcons[day] });
-    for (let i = 0; i < 12; i++) {
-        weekWeather.timeseries.push(new Date(Date.parse(fixture.timeseries[i]) + day * 86400000).toISOString());
+    for (let i = 0; i < (day > 0 && day < 6 ? 13 : 12); i++) {
+        const sampleIndex = weekWeather.timeseries.length;
+        weekWeather.timeseries.push(new Date(Date.parse(fixture.timeseries[0]) + (day * 24 + i) * 3600000).toISOString());
         for (const [key, values] of Object.entries(fixture.datasets['0'])) {
             const param = fixture.paramlist[Number(key)];
-            weekWeather.datasets['0'][key][day * 12 + i] = day && param === 'icon' ? weekIcons[day] : day && param === 'tpp' ? (weekIcons[day] === '10' ? 60 : 0) : values[i];
+            weekWeather.datasets['0'][key][sampleIndex] = day && param === 'icon' ? weekIcons[day] : day && param === 'tpp' ? (weekIcons[day] === '10' ? 60 : 0) : values[Math.min(i, 11)];
         }
     }
 }
@@ -44,8 +48,8 @@ const server = createServer(async (req, res) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const json = body => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-async function prepare(browser, { width = 390, denied = false, touch = false, deferred = false, weatherData = weather } = {}) {
-    const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: touch });
+async function prepare(browser, { width = 390, denied = false, touch = false, deferred = false, colorScheme = 'dark', expectedEmpty = false, weatherData = weather } = {}) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: touch, colorScheme });
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(({ denied }) => {
@@ -53,7 +57,7 @@ async function prepare(browser, { width = 390, denied = false, touch = false, de
         window.fetch = (...args) => { window.qaFetches++; return original(...args); };
         window.qaCharts = 0;
         let chart;
-        Object.defineProperty(window, 'Chart', { configurable: true, get: () => chart, set: value => { chart = new Proxy(value, { construct(target, args) { window.qaCharts++; return Reflect.construct(target, args); } }); } });
+        Object.defineProperty(window, 'Chart', { configurable: true, get: () => chart, set: value => { chart = new Proxy(value, { construct(target, args) { window.qaCharts++; const instance = Reflect.construct(target, args); window.qaChart = instance; return instance; } }); } });
         if (denied) {
             Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage denied'); } });
             Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Clipboard denied'); } } });
@@ -71,8 +75,8 @@ async function prepare(browser, { width = 390, denied = false, touch = false, de
     });
     await page.route('https://api.sunrise-sunset.org/**', async route => { await sunGate; await route.fulfill(json(solarData)).catch(() => {}); });
     await page.goto(origin);
-    await page.locator('.forecast').first().waitFor();
-    await page.waitForFunction(() => window.qaCharts === 1);
+    if (expectedEmpty) { await page.locator('#forecast-empty').waitFor({ state: 'visible' }); assert.equal(await page.evaluate(() => window.qaCharts), 0); }
+    else { await page.locator('.forecast').first().waitFor(); await page.waitForFunction(() => window.qaCharts === 1); }
     return { page, context, errors, releaseSun, releaseMarine };
 }
 async function assertLayout(page, width) {
@@ -139,7 +143,10 @@ async function run(name, browser) {
     await first.context.close();
     for (const width of [320, 390, 768, 1440]) {
         const current = await prepare(browser, { width, touch: width <= 390, weatherData: weekWeather });
-        assert.equal(await current.page.locator('.week-day').count(), 7);
+        assert.equal(await current.page.locator('.week-day').count(), 6);
+        assert.equal(await current.page.locator('#day-2026-10-18').count(), 0);
+        assert.equal(await current.page.locator('#forecast-range').textContent(), '12 – 17 ottobre');
+        assert.ok(await current.page.evaluate(() => window.qaChart.data.datasets.every(d => d.data.every(p => p.x < Date.parse('2026-10-18T00:00:00Z')))));
         await current.page.screenshot({ path: `${output}/${name}-week-${width}.png`, fullPage: false });
         await current.page.locator('.astronomy h4').first().waitFor({ state: 'attached' });
         if (width <= 390) await current.page.locator('.hourly summary').first().tap();
@@ -147,12 +154,48 @@ async function run(name, browser) {
         await current.page.waitForFunction(() => document.querySelector('.hourly').open);
         await assertLayout(current.page, width);
         await current.page.screenshot({ path: `${output}/${name}-${width}.png`, fullPage: true });
+        const beforeTheme = await current.page.evaluate(() => ({ fetches: window.qaFetches, charts: window.qaCharts, text: document.querySelector('.forecast').textContent }));
+        await current.page.locator('#themeToggle').click();
+        assert.equal(await current.page.evaluate(() => document.documentElement.dataset.theme), 'light');
+        assert.deepEqual(await current.page.evaluate(() => ({ fetches: window.qaFetches, charts: window.qaCharts, text: document.querySelector('.forecast').textContent })), beforeTheme);
+        assert.ok(await current.page.evaluate(() => { const cell = document.querySelector('td.marine-cell'), normal = document.querySelector('td.temp'); return getComputedStyle(cell).backgroundColor !== getComputedStyle(normal).backgroundColor && window.qaChart.data.datasets[0].borderColor === getComputedStyle(document.documentElement).getPropertyValue('--temperature').trim(); }));
+        await assertLayout(current.page, width);
+        await current.page.screenshot({ path: `${output}/${name}-light-${width}.png`, fullPage: true });
+        await current.page.locator('.table').first().evaluate(table => table.scrollLeft = table.scrollWidth);
+        await current.page.locator('.table').first().scrollIntoViewIfNeeded();
+        await current.page.screenshot({ path: `${output}/${name}-marine-light-${width}.png`, fullPage: false });
+        await current.page.locator('.table').first().evaluate(table => table.scrollLeft = 0);
+        await current.page.locator('.hourly summary').first().click();
+        await current.page.evaluate(() => window.scrollTo(0, 0));
+        await current.page.screenshot({ path: `${output}/${name}-week-light-${width}.png`, fullPage: false });
+        await current.page.locator('.hourly summary').first().click();
+        await current.page.reload(); await current.page.locator('.forecast').first().waitFor();
+        assert.equal(await current.page.evaluate(() => document.documentElement.dataset.theme), 'light');
+        await current.page.locator('#themeToggle').click();
+        await current.page.locator('.hourly summary').first().click();
         if (width === 1440) {
             await current.page.setViewportSize({ width: 320, height: 900 }); await assertLayout(current.page, 320);
         }
         assert.deepEqual(current.errors, []); await current.context.close();
     }
+    const missingTailData = structuredClone(weather); missingTailData.extrainfo.stats.at(-1).icon = '-';
+    const missingTail = await prepare(browser, { weatherData: missingTailData });
+    assert.equal(await missingTail.page.locator('.day-card').count(), 1);
+    assert.equal(await missingTail.page.locator('.week-day').count(), 1);
+    await missingTail.context.close();
+    const empty = await prepare(browser, { weatherData: fixture, expectedEmpty: true });
+    assert.equal(await empty.page.locator('.day-card').count(), 0);
+    assert.equal(await empty.page.locator('.chart-section').isVisible(), false);
+    await empty.page.locator('#themeToggle').click(); assert.deepEqual(empty.errors, []);
+    await empty.context.close();
+    const automatic = await prepare(browser, { colorScheme: 'light' });
+    assert.equal(await automatic.page.evaluate(() => document.documentElement.dataset.theme), 'light');
+    await automatic.page.emulateMedia({ colorScheme: 'dark' });
+    await automatic.page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    await automatic.context.close();
     const denied = await prepare(browser, { denied: true });
+    await denied.page.locator('#themeToggle').click();
+    assert.equal(await denied.page.evaluate(() => document.documentElement.dataset.theme), 'light');
     await denied.page.locator('#verbosity').selectOption('detailed');
     await denied.page.locator('.copy').first().click();
     await denied.page.locator('.copy-fallback').first().waitFor({ state: 'visible' });
@@ -203,7 +246,7 @@ async function run(name, browser) {
     assert.equal(await races.page.locator('#loc').textContent(), 'Ultima');
     assert.match(races.page.url(), /name=Ultima/);
     assert.deepEqual(races.errors, []); await races.context.close();
-    console.log(`${name}: responsive widths, keyboard/touch, preservation, levels, copy/storage failures, optional failures and request races passed`);
+    console.log(`${name}: dark/light responsive widths, marine colors, final-day filtering, keyboard/touch, preservation, levels, copy/storage failures, optional failures and request races passed`);
 }
 try {
     for (const [name, type] of [['chromium', chromium], ['webkit', webkit]]) {

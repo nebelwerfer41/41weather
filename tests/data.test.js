@@ -55,3 +55,51 @@ test('HTTP failures propagate and are not cached', async () => {
     try { await assert.rejects(fetchJson('https://example.test', undefined, 1000), /429/); await assert.rejects(fetchJson('https://example.test', undefined, 1000), /429/); assert.equal(calls, 2); }
     finally { globalThis.fetch = original; }
 });
+
+test('last-day visibility uses elapsed supported hours, not point counts, and leaves the snapshot intact', async () => {
+    const { visibleForecast } = await import('../meteoam-data.js');
+    const day = (date, offsets) => {
+        const hours = offsets.map(hour => ({ date, time: Date.parse(`${date}T00:00:00Z`) + hour * 3600000, temp: 0, probability: 0, windSpeed: 0, windDir: null, humidity: 0, pressure: 1000, icon: '01' }));
+        return { date, hours, min: 0, max: 0, sampledExtremes: false, icon: '01' };
+    };
+    const first = day('2026-10-12', [0, 1]), last = day('2026-10-13', Array.from({ length: 12 }, (_, i) => i));
+    const s = { days: [first, last], hours: [...first.hours, ...last.hours] }, copy = structuredClone(s);
+    const view = visibleForecast(s);
+    assert.equal(view.days.length, 1); assert.equal(view.hours.length, 2);
+    assert.equal(view.excluded.coverageHours, 11); assert.deepEqual(s, copy);
+    for (const offsets of [Array.from({ length: 13 }, (_, i) => i), [0, 3, 6, 9, 12], [0, 1, 2, 5, 8, 11, 12]]) {
+        const d = day('2026-10-13', offsets);
+        assert.equal(visibleForecast({ days: [d], hours: d.hours }).days.length, 1);
+    }
+    const hole = day('2026-10-13', [0, 1, 12, 13]);
+    assert.equal(visibleForecast({ days: [hole], hours: hole.hours }).days.length, 0);
+    const longerHole = day('2026-10-13', Array.from({ length: 19 }, (_, i) => i).filter(i => i !== 9));
+    assert.equal(visibleForecast({ days: [longerHole], hours: longerHole.hours }).excluded.reason, 'missing-data');
+});
+test('missing atmospheric data/stats exclude only the final date, independently of optional services', async () => {
+    const { visibleForecast } = await import('../meteoam-data.js');
+    const hours = Array.from({ length: 13 }, (_, i) => ({ date: '2026-10-13', time: Date.parse('2026-10-13T00:00:00Z') + i * 3600000, temp: 0, probability: 0, windSpeed: 0, windDir: null, humidity: 0, pressure: 1000, icon: '01' }));
+    const day = { date: '2026-10-13', hours, min: 0, max: 0, sampledExtremes: false, icon: '01' };
+    const s = { days: [day], hours, marineStatus: 'non disponibili', astronomyStatus: 'non disponibili' };
+    assert.equal(visibleForecast(s).excluded, null);
+    for (const field of ['temp', 'probability', 'windSpeed', 'humidity', 'pressure', 'icon']) {
+        const damaged = structuredClone(s); damaged.days[0].hours[1][field] = null;
+        assert.equal(visibleForecast(damaged).excluded.reason, 'missing-data');
+    }
+    for (const patch of [{ sampledExtremes: true }, { icon: '-' }, { min: null }, { max: null }]) {
+        const damaged = structuredClone(s); Object.assign(damaged.days[0], patch);
+        assert.equal(visibleForecast(damaged).excluded.reason, 'missing-data');
+    }
+    const windy = structuredClone(s); windy.days[0].hours[0].windSpeed = 10;
+    assert.equal(visibleForecast(windy).excluded.reason, 'missing-data');
+    assert.equal(visibleForecast({ days: [], hours: [] }).days.length, 0);
+});
+test('twelve real UTC hours survive DST repeated/skipped wall-clock hours', async () => {
+    const { visibleForecast } = await import('../meteoam-data.js');
+    for (const start of ['2026-10-24T22:00:00Z', '2026-03-28T23:00:00Z']) {
+        const hours = Array.from({ length: 13 }, (_, i) => ({ time: Date.parse(start) + i * 3600000, temp: 10, probability: 0, windSpeed: 0, windDir: null, humidity: 50, pressure: 1000, icon: '01' }));
+        hours.forEach(h => h.date = dateKey(h.time, 'Europe/Rome'));
+        const day = { date: hours[0].date, hours, min: 10, max: 10, sampledExtremes: false, icon: '01' };
+        assert.equal(visibleForecast({ days: [day], hours }).excluded, null);
+    }
+});

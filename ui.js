@@ -82,7 +82,7 @@ function createCard(date) {
     const caption = el('caption', 'sr-only', `Previsioni orarie del ${dateLabel(date)}`);
     const thead = el('thead'), tr = el('tr');
     const headings = ['Ora locale', 'Meteo', 'Temp °C', 'Prob. precip. %', 'Umidità %', 'Pressione hPa', 'Vento km/h', 'Direzione °', 'Onde m', 'Periodo s', 'Dir. onde °', 'Beaufort'];
-    headings.forEach((label, i) => { const th = el('th', i >= 8 ? 'marine-cell' : '', label); th.scope = 'col'; tr.append(th); });
+    headings.forEach((label, i) => { const th = el('th', i >= 8 ? `marine-cell${i === 8 ? ' marine-start' : ''}` : '', label); th.scope = 'col'; tr.append(th); });
     thead.append(tr);
     const tbody = el('tbody'); table.append(caption, thead, tbody); wrapper.append(table);
     const marineState = el('p', 'hint marine-state');
@@ -143,7 +143,7 @@ function updateAtmosphere(card, day) {
             if (i === 1) { const [emoji, label] = icon(h.icon); td.append(el('span', 'weather-symbol', emoji), el('span', 'sr-only', label)); }
             tr.append(td);
         });
-        const marine = Array.from({ length: 4 }, () => el('td', 'marine-cell', '—'));
+        const marine = Array.from({ length: 4 }, (_, i) => el('td', `marine-cell${i === 0 ? ' marine-start' : ''}`, '—'));
         tr.append(...marine);
         return { time: h.time, node: tr, marine };
     });
@@ -182,19 +182,20 @@ function updateMarine(card, snapshot) {
 export function render(snapshot) {
     const atmosphericChange = lastHours !== snapshot.hours;
     activeSnapshot = snapshot;
+    const { days, hours } = snapshot.visible;
     if (atmosphericChange) {
         setText($('loc'), snapshot.location.name);
         setText($('sel'), `${snapshot.location.lat.toFixed(3)}, ${snapshot.location.lon.toFixed(3)} · ${snapshot.location.tz}${snapshot.elevation == null ? '' : ` · ${value(snapshot.elevation, ' m s.l.m.')}`}`);
         const runs = Object.entries(snapshot.models).map(([model, run]) => `${model}: ${run}`).join(' · ');
         setText($('when'), `Acquisizione: ${timestamp(snapshot.fetchedAt, snapshot.location.tz)}${runs ? ` · Run ${runs}` : ''}`);
-        const dates = new Set(snapshot.days.map(d => d.date));
+        const dates = new Set(days.map(d => d.date));
         const rangeDate = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'long' });
-        const firstDate = snapshot.days[0].date, lastDate = snapshot.days.at(-1).date;
-        setText($('forecast-range'), firstDate === lastDate ? rangeDate(firstDate) : `${firstDate.slice(0, 7) === lastDate.slice(0, 7) ? Number(firstDate.slice(-2)) : rangeDate(firstDate)} – ${rangeDate(lastDate)}`);
+        const firstDate = days[0]?.date, lastDate = days.at(-1)?.date;
+        setText($('forecast-range'), !days.length ? '' : firstDate === lastDate ? rangeDate(firstDate) : `${firstDate.slice(0, 7) === lastDate.slice(0, 7) ? Number(firstDate.slice(-2)) : rangeDate(firstDate)} – ${rangeDate(lastDate)}`);
         for (const [name, limit] of [['week-days', 7], ['week-tablet-days', 4], ['week-mobile-days', 3]])
-            $('week').style.setProperty(`--${name}`, Math.min(limit, snapshot.days.length));
+            $('week').style.setProperty(`--${name}`, Math.max(1, Math.min(limit, days.length)));
         for (const [date, card] of cards) if (!dates.has(date)) { card.observer?.disconnect(); card.root.remove(); card.weekLink.remove(); cards.delete(date); }
-        for (const [index, day] of snapshot.days.entries()) {
+        for (const [index, day] of days.entries()) {
             let card = cards.get(day.date);
             if (!card) { card = createCard(day.date); cards.set(day.date, card); $('days').append(card.root); $('week').append(card.weekLink); }
             const current = $('days').children[index];
@@ -205,6 +206,9 @@ export function render(snapshot) {
             card.sun = null;
             card.fallback.hidden = card.fallbackLabel.hidden = true; setText(card.copyStatus, '');
         }
+        $('forecast-empty').hidden = days.length > 0;
+        $('verbosity').disabled = days.length === 0;
+        document.querySelector('.chart-section').hidden = !hours.length;
         renderChart(snapshot);
         lastHours = snapshot.hours;
     }
@@ -213,30 +217,53 @@ export function render(snapshot) {
         updateMarine(card, snapshot);
     }
     setText($('sources'), `Mare: ${snapshot.marineStatus ?? 'caricamento…'} · Sole e Luna: ${snapshot.astronomyStatus ?? 'caricamento…'}`);
-    const coverages = [...(snapshot.forecast?.values() ?? [])].map(s => s.facts.find(f => f.category === 'coverage'));
-    setText($('coverage'), snapshot.hours.length ? coverages.some(c => c?.partial || c?.gaps.length) ? 'Copertura atmosferica parziale: consulta i periodi disponibili nelle schede.' : 'Campioni atmosferici disponibili per le date mostrate.' : 'Nessuna copertura atmosferica disponibile.');
+    const coverages = days.map(day => snapshot.forecast.get(day.date)).map(s => s.facts.find(f => f.category === 'coverage'));
+    setText($('coverage'), hours.length ? coverages.some(c => c?.partial || c?.gaps.length) ? 'Copertura atmosferica parziale: consulta i periodi disponibili nelle schede.' : 'Campioni atmosferici disponibili per le date mostrate.' : 'Copertura insufficiente per la vista giornaliera.');
+    if (snapshot.visible.excluded) setText($('coverage'), `${$('coverage').textContent} Giorno finale incompleto escluso.`);
 }
+function chartPalette() {
+    const css = getComputedStyle(document.documentElement);
+    return Object.fromEntries(['text', 'muted', 'accent', 'temperature', 'border', 'surface-raised', 'chart-grid'].map(key => [key, css.getPropertyValue(`--${key}`).trim()]));
+}
+document.addEventListener('41weather:themechange', () => {
+    if (!chart) return;
+    const colors = chartPalette();
+    chart.data.datasets.forEach((dataset, i) => { dataset.borderColor = dataset.backgroundColor = i ? colors.accent : colors.temperature; });
+    chart.options.plugins.legend.labels.color = colors.text;
+    Object.assign(chart.options.plugins.tooltip, { backgroundColor: colors['surface-raised'], titleColor: colors.text, bodyColor: colors.text, borderColor: colors.border });
+    for (const [name, scale] of Object.entries(chart.options.scales)) {
+        const color = name === 'temperature' ? colors.temperature : name === 'probability' ? colors.accent : colors.muted;
+        scale.ticks.color = color;
+        scale.grid.color = colors['chart-grid'];
+        scale.border.color = colors.border;
+        if (scale.title) scale.title.color = color;
+    }
+    chart.update('none');
+});
 function renderChart(snapshot) {
-    chart?.destroy();
+    chart?.destroy(); chart = undefined;
+    const hours = snapshot.visible.hours;
+    if (!hours.length) return;
     if (typeof Chart === 'undefined') { setText($('chart-state'), 'Grafico non disponibile. Consulta le tabelle orarie.'); return; }
     setText($('chart-state'), '');
     const tz = snapshot.location.tz;
     const axisStamp = time => new Date(time).toLocaleString('it-IT', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const tickTimes = [...new Set(Array.from({ length: 5 }, (_, i) => snapshot.hours[Math.round(i * (snapshot.hours.length - 1) / 4)].time))];
+    const tickTimes = [...new Set(Array.from({ length: 5 }, (_, i) => hours[Math.round(i * (hours.length - 1) / 4)].time))];
     const gaps = new Set([...(snapshot.forecast?.values() ?? [])].flatMap(s => s.diagnostics.gaps));
-    const points = field => snapshot.hours.flatMap((h, i, all) => [
+    const points = field => hours.flatMap((h, i, all) => [
         ...(i && (gaps.has(h.time) || h.time - all[i - 1].time > 10800000) ? [{ x: all[i - 1].time + 1, y: null }] : []), { x: h.time, y: h[field] }
     ]);
+    const colors = chartPalette();
     chart = new Chart($('chart'), {
         type: 'line', data: { datasets: [
-            { label: 'Temperatura °C', data: points('temp'), borderColor: '#ffcc66', backgroundColor: '#ffcc66', yAxisID: 'temperature', tension: 0, pointRadius: 2, spanGaps: false },
-            { label: 'Probabilità precipitazione %', data: points('probability'), borderColor: '#6aa6ff', backgroundColor: '#6aa6ff', borderDash: [5, 3], yAxisID: 'probability', stepped: 'after', pointRadius: 2, spanGaps: false }
+            { label: 'Temperatura °C', data: points('temp'), borderColor: colors.temperature, backgroundColor: colors.temperature, yAxisID: 'temperature', tension: 0, pointRadius: 2, spanGaps: false },
+            { label: 'Probabilità precipitazione %', data: points('probability'), borderColor: colors.accent, backgroundColor: colors.accent, borderDash: [5, 3], yAxisID: 'probability', stepped: 'after', pointRadius: 2, spanGaps: false }
         ] },
         options: { responsive: true, maintainAspectRatio: false, parsing: false, interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { labels: { color: '#e9eef7', boxWidth: 16 } }, tooltip: { callbacks: { title: items => timestamp(items[0].parsed.x, tz) } } },
-            scales: { x: { type: 'linear', min: snapshot.hours[0].time, max: snapshot.hours.at(-1).time, afterBuildTicks: axis => { axis.ticks = tickTimes.map(value => ({ value })); }, ticks: { color: '#a9b6cc', maxTicksLimit: 5, callback: n => axisStamp(n) } },
-                temperature: { position: 'left', title: { display: true, text: '°C', color: '#ffcc66' }, ticks: { color: '#ffcc66' } },
-                probability: { position: 'right', min: 0, max: 100, title: { display: true, text: '%', color: '#6aa6ff' }, ticks: { color: '#6aa6ff' }, grid: { drawOnChartArea: false } } }
+            plugins: { legend: { labels: { color: colors.text, boxWidth: 16 } }, tooltip: { backgroundColor: colors['surface-raised'], titleColor: colors.text, bodyColor: colors.text, borderColor: colors.border, borderWidth: 1, callbacks: { title: items => timestamp(items[0].parsed.x, tz) } } },
+            scales: { x: { grid: { color: colors['chart-grid'] }, border: { color: colors.border }, type: 'linear', min: hours[0].time, max: hours.at(-1).time, afterBuildTicks: axis => { axis.ticks = tickTimes.map(value => ({ value })); }, ticks: { color: colors.muted, maxTicksLimit: 5, callback: n => axisStamp(n) } },
+                temperature: { grid: { color: colors['chart-grid'] }, border: { color: colors.border }, position: 'left', title: { display: true, text: '°C', color: colors.temperature }, ticks: { color: colors.temperature } },
+                probability: { border: { color: colors.border }, position: 'right', min: 0, max: 100, title: { display: true, text: '%', color: colors.accent }, ticks: { color: colors.accent }, grid: { drawOnChartArea: false, color: colors['chart-grid'] } } }
         }
     });
 }

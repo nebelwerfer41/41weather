@@ -1,4 +1,4 @@
-import { normalizeForecast, normalizeMarine, number } from './meteoam-data.js';
+import { normalizeForecast, normalizeMarine, number, visibleForecast } from './meteoam-data.js';
 import { meteogram, geocode, astronomy, RequestScope } from './services.js';
 import { render, status } from './ui.js';
 import { analyzeForecast } from './forecast-text.js';
@@ -20,6 +20,7 @@ async function load(target) {
         const snapshot = normalizeForecast(data, location);
         // One analysis per atmospheric dataset; optional enrichments mutate this snapshot.
         snapshot.forecast = analyzeForecast(snapshot);
+        snapshot.visible = visibleForecast(snapshot);
         // Commit a consistent location only after the required weather data is ready.
         render(snapshot);
         updateUrl(snapshot.location);

@@ -6,6 +6,7 @@
   <title>41weather - Client Previsioni MeteoAM</title>
   <link rel="preconnect" href="https://api.meteoam.it">
   <link rel="preconnect" href="https://geocoding-api.open-meteo.com">
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,6 +19,7 @@
       <button id="searchBtn" class="btn" type="button">Cerca</button>
       <button id="useRome" class="btn ghost" type="button">Roma</button>
     </div>
+    <button id="themeToggle" class="btn ghost theme-toggle" type="button"><span id="themeSymbol" aria-hidden="true">☀</span> <span id="themeLabel">Tema chiaro</span></button>
     <div class="active-location">
       <h2 id="loc">Previsioni</h2>
       <p id="status" class="hint" role="status" aria-live="polite">Caricamento…</p>
@@ -38,6 +40,7 @@
           </select>
         </div>
       </div>
+      <p id="forecast-empty" class="hint" role="status" hidden>Copertura insufficiente per mostrare le previsioni giornaliere.</p>
       <nav id="week" class="week-grid" aria-label="Previsioni dei prossimi giorni"></nav>
       <div id="days" class="days"></div>
     </section>

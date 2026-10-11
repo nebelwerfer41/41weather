@@ -106,3 +106,27 @@ export function normalizeAstronomy(payload) {
         illumination: bounded(d.moon_illumination, 0, 100)
     }]));
 }
+
+// Display policy only: keep the full normalized series for analysis/diagnostics.
+// Count supported elapsed UTC intervals, never points as hours or an extension
+// after the final point. Only the final date is eligible for exclusion.
+export function visibleForecast(snapshot, { minimumHours = 12 } = {}) {
+    if (!Number.isFinite(minimumHours) || minimumHours < 0) throw new RangeError('Soglia oraria non valida');
+    const allDays = snapshot.days ?? [], last = allDays.at(-1);
+    const finite = n => typeof n === 'number' && Number.isFinite(n);
+    const samples = (last?.hours ?? []).filter(h => finite(h.time)).slice().sort((a, b) => a.time - b.time);
+    const coverageHours = samples.slice(1).reduce((sum, h, i) => {
+        const step = (h.time - samples[i].time) / 3600000;
+        return sum + ([1, 3].includes(step) ? step : 0);
+    }, 0);
+    const discontinuity = samples.some((h, i) => i > 0 && ![1, 3].includes((h.time - samples[i - 1].time) / 3600000));
+    const missing = last && (discontinuity || samples.length !== (last.hours ?? []).length || last.sampledExtremes || !finite(last.min) || !finite(last.max) || !iconSemantics(last.icon) ||
+        !samples.length || samples.some(h => !iconSemantics(h.icon) ||
+            ['temp', 'probability', 'windSpeed', 'humidity', 'pressure'].some(field => !finite(h[field])) ||
+            h.windSpeed > 2 && !finite(h.windDir)));
+    const exclude = last && (missing || coverageHours < minimumHours);
+    const days = exclude ? allDays.slice(0, -1) : allDays.slice();
+    const dates = new Set(days.map(d => d.date));
+    return { days, hours: (snapshot.hours ?? []).filter(h => dates.has(h.date)),
+        excluded: exclude ? { date: last.date, coverageHours, reason: missing ? 'missing-data' : 'short-coverage' } : null };
+}
