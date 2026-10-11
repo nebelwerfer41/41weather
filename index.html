@@ -9,40 +9,50 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <a class="skip-link" href="#forecast">Vai alle previsioni</a>
+  <header class="site-header">
     <h1>🌤️ 41weather</h1>
-    <div class="search">
-      <input id="q" type="text" placeholder="Cerca città (es. Roma, IT)…" />
-      <button id="searchBtn" class="btn">Cerca</button>
-      <span id="sel" class="pill">Lat 41.903, Lon 12.496 — Europe/Rome</span>
+    <div class="search" role="search">
+      <label class="sr-only" for="q">Cerca località</label>
+      <input id="q" type="text" placeholder="Cerca una località…" autocomplete="off" />
+      <button id="searchBtn" class="btn" type="button">Cerca</button>
+      <button id="useRome" class="btn ghost" type="button">Roma</button>
     </div>
-    <button id="useRome" class="btn ghost">Roma</button>
+    <div class="active-location">
+      <h2 id="loc">Previsioni</h2>
+      <p id="sel" class="hint"></p>
+      <p id="status" class="hint" role="status" aria-live="polite">Caricamento…</p>
+    </div>
   </header>
 
   <main>
-    <section class="card">
-      <div class="flex" style="justify-content:space-between">
-        <div>
-          <div id="loc" class="day-title section">Roma, IT</div>
-          <div id="status" class="hint" role="status" aria-live="polite"></div>
-          <div id="sources" class="hint"></div>
-          <div id="when" class="muted hint">caricamento…</div>
-        </div>
-        <div class="flex">
-          <div class="pill" id="elev">— m s.l.m.</div>
-          <div class="pill" id="tz">Europe/Rome</div>
+    <section id="forecast" aria-labelledby="forecast-heading">
+      <div class="section-header">
+        <div><h2 id="forecast-heading">Previsioni giornaliere</h2><p id="coverage" class="hint"></p></div>
+        <div class="detail-control">
+          <label for="verbosity">Dettaglio</label>
+          <select id="verbosity">
+            <option value="title">Titolo</option>
+            <option value="brief">Breve</option>
+            <option value="standard" selected>Standard</option>
+            <option value="detailed">Dettagliato</option>
+          </select>
         </div>
       </div>
+      <div id="days" class="days"></div>
+    </section>
+
+    <section class="card chart-section" aria-labelledby="chart-heading">
+      <h2 id="chart-heading">Andamento dei campioni</h2>
+      <p id="chart-state" class="hint"></p>
       <div class="chart-container">
-        <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori disponibili anche nelle tabelle giornaliere"></canvas>
+        <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori e orari disponibili anche nelle tabelle giornaliere"></canvas>
       </div>
     </section>
-
-    <section class="card">
-      <div class="day-title section">Riepilogo giornaliero</div>
-      <div id="days" class="grid"></div>
+    <section class="metadata" aria-label="Fonti e acquisizione">
+      <p id="when" class="hint"></p>
+      <p id="sources" class="hint"></p>
     </section>
-
   </main>
 
   <footer>

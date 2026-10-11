@@ -1,6 +1,7 @@
 import { normalizeForecast, normalizeMarine, number } from './meteoam-data.js';
 import { meteogram, geocode, astronomy, RequestScope } from './services.js';
 import { render, status } from './ui.js';
+import { analyzeForecast } from './forecast-text.js';
 const DEFAULT_LOCATION = { name: 'Roma, IT', lat: 41.902783, lon: 12.496366, tz: 'Europe/Rome' };
 const requests = new RequestScope();
 function updateUrl(location) {
@@ -10,13 +11,15 @@ function updateUrl(location) {
 }
 async function load(target) {
     const request = requests.begin();
-    status('Caricamento delle previsioni…');
+    status(`Richiesta in corso: ${typeof target === 'string' ? target : target.name}…`);
     try {
         const location = typeof target === 'string' ? await geocode(target, request.signal) : target;
         if (!request.current()) return;
         const data = await meteogram('preset1', location, request.signal);
         if (!request.current()) return;
         const snapshot = normalizeForecast(data, location);
+        // One analysis per atmospheric dataset; optional enrichments mutate this snapshot.
+        snapshot.forecast = analyzeForecast(snapshot);
         // Commit a consistent location only after the required weather data is ready.
         render(snapshot);
         updateUrl(snapshot.location);
