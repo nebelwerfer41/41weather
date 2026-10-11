@@ -472,3 +472,7 @@ footer {
         height: 200px
     }
 }
+
+summary.day-header { cursor: pointer; }
+summary .sun-row { display: block; margin-top: 6px; cursor: pointer; }
+.error { color: var(--bad); }

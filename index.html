@@ -24,6 +24,8 @@
       <div class="flex" style="justify-content:space-between">
         <div>
           <div id="loc" class="day-title section">Roma, IT</div>
+          <div id="status" class="hint" role="status" aria-live="polite"></div>
+          <div id="sources" class="hint"></div>
           <div id="when" class="muted hint">caricamento…</div>
         </div>
         <div class="flex">
@@ -32,7 +34,7 @@
         </div>
       </div>
       <div class="chart-container">
-        <canvas id="chart"></canvas>
+        <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori disponibili anche nelle tabelle giornaliere"></canvas>
       </div>
     </section>
 
@@ -46,13 +48,12 @@
   <footer>
     Made by <a href="https://github.com/nebelwerfer41" target="_blank">nebelwerfer41</a> and released under the MIT license.<br>
     Informazioni elaborate dal Servizio Meteorologico dell’Aeronautica Militare e pubblicate sul sito <a href="https://www.meteoam.it" target="_blank">www.meteoam.it</a>.<br>
-    Sunrise/Sunset data: <a href="https://sunrise-sunset.org/api">https://sunrise-sunset.org/api</a><br>
-    Moon phase data: <a href="https://aa.usno.navy.mil/data/api">https://aa.usno.navy.mil/data/api</a><br>
+    Sunrise/Sunset and Moon data: <a href="https://sunrise-sunset.org/api">https://sunrise-sunset.org/api</a><br>
     Location search: <a href="https://open-meteo.com/en/docs/geocoding-api">https://open-meteo.com/en/docs/geocoding-api</a>
   </footer>
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

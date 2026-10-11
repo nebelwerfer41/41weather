@@ -8,15 +8,19 @@
 - Location search powered by the Open-Meteo geocoding API, with a quick shortcut to Roma.
 - Fetches detailed hourly forecasts from MeteoAM (preset1) and groups them into expandable daily summaries.
 - When a coastal/offshore point is selected, augments the hourly table with marine data (preset2) in the same rows while hiding those columns for inland locations.
-- Shows sunrise/sunset times with hover/tap tooltip for civil, nautical, and astronomical twilight; highlights lunar events (new/first/full/last quarter) with emojis next to min/max.
-- Responsive UI with a combined temperature/rainfall chart, weather icons, and key metadata (timezone, elevation).
+- Shows sunrise/sunset times with hover/tap tooltip for civil, nautical, and astronomical twilight; shows all eight daily lunar phases, illumination, moonrise and moonset from Sunrise-Sunset v2.
+- Responsive UI with a combined temperature/precipitation-probability chart, weather icons, and key metadata (timezone, elevation).
 - Weather icons ship with descriptive alt/title text for accessibility and quick hover hints.
 - Zero-build setup: just serve the static files and the app runs in modern browsers.
 
 ## Project Structure
 - `index.html` – main page markup and script includes.
 - `styles.css` – dark theme styling for layout, cards, tables, and responsive tweaks.
-- `app.js` – application logic (API calls, data aggregation, rendering).
+- `app.js` – request coordination and consistent location updates.
+- `services.js` – provider requests, cancellation, deadlines and bounded cache.
+- `meteoam-data.js` – pure provider normalization, units, local dates and missing values.
+- `ui.js` – daily cards, hourly tables and time-based chart.
+- `tests/` – Node regression tests for provider contracts and cancellation.
 - `api.md` – notes on the reverse-engineered MeteoAM meteogram API.
 
 ## Getting Started
@@ -43,8 +47,7 @@ Once a location is loaded, the app keeps the URL in sync so you can bookmark or 
 
 ## APIs Used
 - **MeteoAM meteograms** (`https://api.meteoam.it/deda-meteograms/api/GetMeteogram/{preset}/{lat},{lon}`) – hourly atmospheric parameters and daily stats.
-- **Sunrise-Sunset.org** (`https://api.sunrise-sunset.org/json`) – sunrise/sunset and twilight periods (per day).
-- **USNO RSTT oneday** (`https://aa.usno.navy.mil/api/rstt/oneday`) – daily lunar phases (new/first/last quarter/full) calculated using the application’s date, coordinates, and timezone.
+- **Sunrise-Sunset.org v2** (`https://api.sunrise-sunset.org/v2`) – solar events, twilight, daily lunar phase and illumination, moonrise and moonset. Lunar phase is evaluated at local noon, not the exact primary-phase event instant.
 - **Open-Meteo Geocoding** (`https://geocoding-api.open-meteo.com/v1/search`) – translates user queries into coordinates and timezone data.
 
 See `api.md` for the detailed reverse-engineering notes captured during development.
@@ -54,8 +57,12 @@ See `api.md` for the detailed reverse-engineering notes captured during developm
 - Browser: modern ES modules/Fetch/DOM support (tested in recent Chromium/WebKit browsers).
 
 ## Development Notes
-- `app.js` keeps UI state in a single `state` object. Re-rendering daily cards updates the expanded day without a framework.
-- Weather icons are generated on the fly by mapping MeteoAM codes to emoji and inlining them as SVG data URIs.
+- Run `npm test` with Node 20+ (no dependency installation required).
+- Forecast data renders before optional marine and astronomy enrichment. Optional failures are shown explicitly; failed searches preserve the previous forecast.
+- Every location search owns an abortable request scope; stale results cannot update the page.
+- Temperature and precipitation probability use actual UTC timestamps on a linear axis, preserving the change from hourly to three-hour steps. Missing values remain gaps.
+- Daily cards use native keyboard-accessible `details` elements and retain their open state during enrichment.
+- No rainfall amounts or gusts are inferred from unavailable parameters.
 
 ## License
 Released under the [MIT License](LICENSE) © 2024 nebelwerfer41.
