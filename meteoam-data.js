@@ -16,18 +16,39 @@ export function dateKey(time, tz) {
     const parts = new Intl.DateTimeFormat('en', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));
     return ['year', 'month', 'day'].map(key => parts.find(p => p.type === key).value).join('-');
 }
+// One catalog serves provider icons and editorial analysis. Phenomenon icons do
+// not imply a cloud cover; day/night variants share atmospheric semantics.
+const descriptor = (emoji, label, sky = null, obscuration = null, phenomenon = null, variant = 'day') =>
+    Object.assign([emoji, label], { sky, obscuration, phenomenon, variant });
 export const ICONS = {
-    '01': ['☀️', 'Sereno'], '02': ['🌤️', 'Parzialmente velato'], '03': ['🌥️', 'Velato'],
-    '04': ['🌤️', 'Poco nuvoloso'], '05': ['🌥️', 'Molto nuvoloso'], '06': ['☁️', 'Coperto'],
-    '07': ['☁️', 'Coperto'], '08': ['🌦️', 'Pioggia debole'], '09': ['🌧️', 'Pioggia forte'],
-    '10': ['⛈️', 'Temporale'], '11': ['🌨️', 'Pioggia e neve'], '12': ['🌧️', 'Pioggia congelantesi'],
-    '13': ['🌫️', 'Foschia'], '14': ['🌫️', 'Nebbia'], '15': ['🧊', 'Grandine'],
-    '16': ['🌨️', 'Neve'], '17': ['🌪️', 'Tromba d’aria o marina'], '18': ['💨', 'Fumo'],
-    '19': ['💨', 'Tempesta di sabbia'], '31': ['🌙', 'Sereno (notte)'],
-    '32': ['🌙', 'Parzialmente velato (notte)'], '33': ['🌙', 'Velato (notte)'],
-    '34': ['☁️', 'Poco nuvoloso (notte)'], '35': ['☁️', 'Molto nuvoloso (notte)'], '36': ['🌫️', 'Foschia (notte)']
+    '01': descriptor('☀️', 'Sereno', 0),
+    '02': descriptor('🌤️', 'Parzialmente velato', null, 'velature parziali'),
+    '03': descriptor('🌥️', 'Velato', null, 'velature'),
+    '04': descriptor('🌤️', 'Poco nuvoloso', 1),
+    '05': descriptor('🌥️', 'Molto nuvoloso', 2),
+    '06': descriptor('☁️', 'Coperto', 3), '07': descriptor('☁️', 'Coperto', 3),
+    '08': descriptor('🌦️', 'Pioggia debole', null, null, 'pioggia'),
+    '09': descriptor('🌧️', 'Pioggia forte', null, null, 'pioggia'),
+    '10': descriptor('⛈️', 'Temporale', null, null, 'temporale'),
+    '11': descriptor('🌨️', 'Pioggia e neve', null, null, 'pioggia e neve'),
+    '12': descriptor('🌧️', 'Pioggia congelantesi', null, null, 'pioggia congelantesi'),
+    '13': descriptor('🌫️', 'Foschia', null, 'foschia', 'foschia'),
+    '14': descriptor('🌫️', 'Nebbia', null, 'nebbia', 'nebbia'),
+    '15': descriptor('🧊', 'Grandine', null, null, 'grandine'),
+    '16': descriptor('🌨️', 'Neve', null, null, 'neve'),
+    '17': descriptor('🌪️', 'Tromba d’aria o marina', null, null, 'tromba d’aria o marina'),
+    '18': descriptor('💨', 'Fumo', null, 'fumo', 'fumo'),
+    '19': descriptor('💨', 'Tempesta di sabbia', null, 'sabbia', 'tempesta di sabbia'),
+    '31': descriptor('🌙', 'Sereno (notte)', 0, null, null, 'night'),
+    '32': descriptor('🌙', 'Parzialmente velato (notte)', null, 'velature parziali', null, 'night'),
+    '33': descriptor('🌙', 'Velato (notte)', null, 'velature', null, 'night'),
+    '34': descriptor('☁️', 'Poco nuvoloso (notte)', 1, null, null, 'night'),
+    '35': descriptor('☁️', 'Molto nuvoloso (notte)', 2, null, null, 'night'),
+    '36': descriptor('🌫️', 'Foschia (notte)', null, 'foschia', 'foschia', 'night')
 };
-export const icon = code => ICONS[String(code ?? '').padStart(2, '0')] ?? ['❔', 'Condizione non disponibile'];
+const iconKey = code => String(code ?? '').padStart(2, '0');
+export const iconSemantics = code => Object.hasOwn(ICONS, iconKey(code)) ? ICONS[iconKey(code)] : null;
+export const icon = code => iconSemantics(code)?.slice(0, 2) ?? ['❔', 'Condizione non disponibile'];
 function rows(data) {
     const params = data.paramlist ?? [];
     const ds = data.datasets?.['0'] ?? {};
@@ -47,7 +68,7 @@ export function normalizeForecast(data, location, fetchedAt = Date.now()) {
         windSpeed: bounded(get('wkmh'), 0, Infinity) ?? (bounded(get('wspd'), 0, Infinity) === null ? null : number(get('wspd')) * 1.852),
         windDir: bounded(get('wdir'), 0, 360), icon: get('icon')
     }));
-    if (!hours.length) throw new Error('Previsioni MeteoAM vuote');
+    if (!hours.length) throw new Error('Nessuna copertura atmosferica disponibile per questa località');
     const stats = new Map((data.extrainfo?.stats ?? []).map(s => [s.localDate?.slice(0, 10), s]));
     const grouped = new Map();
     for (const hour of hours) {
