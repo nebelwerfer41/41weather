@@ -6,50 +6,76 @@
   <title>41weather - Client Previsioni MeteoAM</title>
   <link rel="preconnect" href="https://api.meteoam.it">
   <link rel="preconnect" href="https://geocoding-api.open-meteo.com">
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <a class="skip-link" href="#forecast">Vai alle previsioni</a>
+  <header class="site-header">
     <h1>🌤️ 41weather</h1>
-    <div class="search">
-      <input id="q" type="text" placeholder="Cerca città (es. Roma, IT)…" />
-      <button id="searchBtn" class="btn">Cerca</button>
-      <span id="sel" class="pill">Lat 41.903, Lon 12.496 — Europe/Rome</span>
+    <div class="search" role="search">
+      <label class="sr-only" for="q">Cerca località</label>
+      <input id="q" type="text" placeholder="Cerca una località…" autocomplete="off" />
+      <button id="searchBtn" class="btn" type="button">Cerca</button>
+      <button id="useRome" class="btn ghost" type="button">Roma</button>
     </div>
-    <button id="useRome" class="btn ghost">Roma</button>
+    <button id="themeToggle" class="btn ghost theme-toggle" type="button"><span id="themeSymbol" aria-hidden="true">☀</span> <span id="themeLabel">Tema chiaro</span></button>
+    <div class="active-location">
+      <h2 id="loc">Previsioni</h2>
+      <p id="status" class="hint" role="status" aria-live="polite">Caricamento…</p>
+    </div>
   </header>
 
   <main>
-    <section class="card">
-      <div class="flex" style="justify-content:space-between">
-        <div>
-          <div id="loc" class="day-title section">Roma, IT</div>
-          <div id="status" class="hint" role="status" aria-live="polite"></div>
-          <div id="sources" class="hint"></div>
-          <div id="when" class="muted hint">caricamento…</div>
-        </div>
-        <div class="flex">
-          <div class="pill" id="elev">— m s.l.m.</div>
-          <div class="pill" id="tz">Europe/Rome</div>
+    <section id="forecast" aria-labelledby="forecast-heading">
+      <div class="section-header">
+        <div><p id="forecast-range" class="eyebrow"></p><h2 id="forecast-heading">Meteo della settimana</h2></div>
+        <div class="detail-control">
+          <label for="verbosity">Verbosità</label>
+          <select id="verbosity">
+            <option value="title">Titolo</option>
+            <option value="brief">Breve</option>
+            <option value="standard" selected>Standard</option>
+            <option value="detailed">Dettagliato</option>
+          </select>
         </div>
       </div>
+      <p id="forecast-empty" class="hint" role="status" hidden>Copertura insufficiente per mostrare le previsioni giornaliere.</p>
+      <nav id="week" class="week-grid" aria-label="Previsioni dei prossimi giorni"></nav>
+      <div id="days" class="days"></div>
+    </section>
+
+    <section class="card chart-section" aria-labelledby="chart-heading">
+      <h2 id="chart-heading">Andamento meteo</h2>
+      <p id="chart-state" class="hint"></p>
       <div class="chart-container">
-        <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori disponibili anche nelle tabelle giornaliere"></canvas>
+        <canvas id="chart" role="img" aria-label="Temperatura e probabilità di precipitazione; valori e orari disponibili anche nelle tabelle giornaliere"></canvas>
       </div>
+      <details class="chart-info secondary-disclosure">
+        <summary>Come leggere il grafico</summary>
+        <p class="hint">I punti rappresentano gli orari disponibili; le interruzioni indicano dati mancanti. I gradini della probabilità collegano i valori senza definire un intervallo statistico.</p>
+      </details>
     </section>
-
-    <section class="card">
-      <div class="day-title section">Riepilogo giornaliero</div>
-      <div id="days" class="grid"></div>
-    </section>
-
   </main>
 
   <footer>
-    Made by <a href="https://github.com/nebelwerfer41" target="_blank">nebelwerfer41</a> and released under the MIT license.<br>
+    <details class="metadata secondary-disclosure">
+      <summary>Informazioni sui dati</summary>
+      <div class="metadata-content">
+        <p id="sel" class="hint"></p>
+        <p id="time-zone" class="hint"></p>
+        <p id="coverage" class="hint"></p>
+        <p id="when" class="hint"></p>
+        <p id="sources" class="hint"></p>
+      </div>
+    </details>
+    <details class="secondary-disclosure credits">
+      <summary>Fonti e licenza</summary>
+      <p>Made by <a href="https://github.com/nebelwerfer41" target="_blank">nebelwerfer41</a> and released under the MIT license.<br>
     Informazioni elaborate dal Servizio Meteorologico dell’Aeronautica Militare e pubblicate sul sito <a href="https://www.meteoam.it" target="_blank">www.meteoam.it</a>.<br>
     Sunrise/Sunset and Moon data: <a href="https://sunrise-sunset.org/api">https://sunrise-sunset.org/api</a><br>
-    Location search: <a href="https://open-meteo.com/en/docs/geocoding-api">https://open-meteo.com/en/docs/geocoding-api</a>
+    Location search: <a href="https://open-meteo.com/en/docs/geocoding-api">https://open-meteo.com/en/docs/geocoding-api</a></p>
+    </details>
   </footer>
 
   <!-- Chart.js -->

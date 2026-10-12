@@ -1,68 +1,320 @@
 import { icon } from './meteoam-data.js';
+import { renderForecast } from './forecast-text.js';
+import { timeDisplay } from './time-display.js';
 const $ = id => document.getElementById(id);
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const value = (n, unit = '', digits = 0) => n == null ? '—' : `${n.toLocaleString('it-IT', { maximumFractionDigits: digits })}${unit}`;
-const clock = (time, tz) => time && Number.isFinite(new Date(time).getTime()) ? new Date(time).toLocaleTimeString('it-IT', { timeZone: tz, hour: '2-digit', minute: '2-digit', timeZoneName: 'shortOffset' }) : '—';
-const timestamp = (time, tz) => new Date(time).toLocaleString('it-IT', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+let displayTimes;
+const clock = time => displayTimes.clock(time);
+const timestamp = time => displayTimes.timestamp(time);
+const dateLabel = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const direction = n => n == null ? '—' : `${['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(n / 45) % 8]} ${value(n, '°')}`;
-const condition = code => { const [emoji, label] = icon(code); return `<span role="img" aria-label="${escape(label)}" title="${escape(label)}">${emoji}</span>`; };
-let chart;
-let lastSnapshot;
+function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+}
+function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
+function condition(code) {
+    const [emoji, label] = icon(code);
+    const node = el('span', 'condition');
+    const symbol = el('span', 'day-weather-symbol', emoji); symbol.setAttribute('aria-hidden', 'true');
+    node.append(symbol, el('span', 'condition-label', label));
+    return node;
+}
+const levels = { title: 'Titolo', brief: 'Breve', standard: 'Standard', detailed: 'Dettagliato' };
+const preferenceKey = '41weather.detail';
+let verbosity = 'standard';
+try { const saved = localStorage.getItem(preferenceKey); if (Object.hasOwn(levels, saved)) verbosity = saved; } catch { /* Storage is optional. */ }
+$('verbosity').value = verbosity;
+let chart, activeSnapshot, lastHours;
+const cards = new Map();
+document.addEventListener('pointerdown', event => {
+    for (const card of cards.values()) card.dismissTwilight?.(event.target);
+});
 export function status(message, error = false) {
-    $('status').textContent = message;
+    setText($('status'), message === 'Previsioni caricate.' ? '' : message);
     $('status').classList.toggle('error', error);
 }
-export function render(snapshot) {
-    const { location, days } = snapshot;
-    const tz = location.tz;
-    const open = new Set([...$('days').querySelectorAll('details[open]')].map(el => el.dataset.date));
-    if (lastSnapshot && lastSnapshot !== snapshot) open.clear();
-    $('loc').textContent = location.name;
-    $('sel').textContent = `Lat ${location.lat.toFixed(3)}, Lon ${location.lon.toFixed(3)} — ${tz}`;
-    $('tz').textContent = tz;
-    $('elev').textContent = value(snapshot.elevation, ' m s.l.m.');
-    const runs = Object.entries(snapshot.models).map(([model, run]) => `${model}: ${run}`).join(' · ');
-    $('when').textContent = `Dati acquisiti: ${timestamp(snapshot.fetchedAt, tz)}${runs ? ` · Run ${runs}` : ''}`;
-    const hasMarine = snapshot.marine?.size > 0;
-    $('days').innerHTML = days.map(day => {
-        const sun = snapshot.astronomy.get(day.date);
-        const solarTip = sun ? [['Crepuscolo civile', 'civil_twilight'], ['Crepuscolo nautico', 'nautical_twilight'], ['Crepuscolo astronomico', 'astronomical_twilight']].map(([label, key]) => `${label}: ${clock(sun[`${key}_begin`], tz)} / ${clock(sun[`${key}_end`], tz)}`).join('\n') : '';
-        const moon = sun ? `${sun.phase.join(' ')} · illuminazione ${value(sun.illumination, '%', 1)} (mezzogiorno locale) · Levata ${clock(sun.moonrise, tz)} / Tramonto ${clock(sun.moonset, tz)}` : '';
-        const rows = day.hours.map(h => {
-            const wave = snapshot.marine?.get(h.time);
-            return `<tr><td>${escape(clock(h.time, tz))}</td><td>${condition(h.icon)}</td><td class="temp">${value(h.temp, '°', 1)}</td><td class="rain">${value(h.probability, '%')}</td><td>${value(h.humidity, '%')}</td><td>${value(h.pressure, '', 1)}</td><td>${value(h.windSpeed, '', 1)}</td><td>${direction(h.windDir)}</td>${hasMarine ? `<td>${value(wave?.height, '', 1)}</td><td>${value(wave?.period, '', 1)}</td><td>${direction(wave?.direction)}</td><td>${value(wave?.beaufort)}</td>` : ''}</tr>`;
-        }).join('');
-        return `<details class="day-card" data-date="${day.date}" ${open.has(day.date) ? 'open' : ''}>
-          <summary class="day-header"><span class="day-title">${escape(new Date(day.hours[0].time).toLocaleDateString('it-IT', { timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit' }))}</span> ${condition(day.icon)} <span class="big">${value(day.max, '°')} / ${value(day.min, '°')}</span>${day.sampledExtremes ? '<span class="hint"> Estremi dei campioni disponibili</span>' : ''}
-          <div class="sun-row tooltip" tabindex="0" data-tooltip="${escape(solarTip)}" title="${escape(solarTip)}">${sun ? `☀️ ${escape(clock(sun.sunrise, tz))} / ${escape(clock(sun.sunset, tz))} · ${escape(moon)}` : 'Sole e Luna: ' + escape(snapshot.astronomyStatus ?? 'caricamento…')}</div></summary>
-          <div class="day-details"><div class="hint">Probabilità di precipitazione fornita da MeteoAM; intervallo di riferimento non specificato. — indica un dato assente.</div>
-          <div class="table"><table><thead><tr><th>Ora</th><th class="icon-header">Meteo</th><th>Temp °C</th><th>Precipitazione %</th><th>Umidità %</th><th>Pressione hPa</th><th>Vento km/h</th><th>Direzione</th>${hasMarine ? '<th>Onde m</th><th>Periodo s</th><th>Direzione onde</th><th>Beaufort</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div></div>
-        </details>`;
-    }).join('');
-    for (const wrapper of $('days').querySelectorAll('.table')) {
-        const sync = () => wrapper.style.setProperty('--hour-col-width', `${wrapper.querySelector('th').getBoundingClientRect().width}px`);
-        wrapper.closest('details').addEventListener('toggle', sync);
-        requestAnimationFrame(sync);
-    }
-    $('sources').textContent = `Mare: ${snapshot.marineStatus ?? 'caricamento…'} · Sole e Luna: ${snapshot.astronomyStatus ?? 'caricamento…'}`;
-    if (lastSnapshot !== snapshot) renderChart(snapshot);
-    lastSnapshot = snapshot;
+function updateText(card) {
+    setText(card.forecast, renderForecast(activeSnapshot.forecast?.get(card.date), { verbosity }));
 }
+$('verbosity').addEventListener('change', event => {
+    verbosity = Object.hasOwn(levels, event.target.value) ? event.target.value : 'standard';
+    try { localStorage.setItem(preferenceKey, verbosity); } catch { /* Keep the in-memory preference. */ }
+    for (const card of cards.values()) updateText(card);
+});
+function createCard(date) {
+    const root = el('article', 'day-card'); root.dataset.date = date; root.id = `day-${date}`; root.tabIndex = -1;
+    const localDate = new Date(`${date}T12:00:00Z`);
+    const weekday = localDate.toLocaleDateString('it-IT', { timeZone: 'UTC', weekday: 'long' });
+    const calendarDate = localDate.toLocaleDateString('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+    const weekLink = el('a', 'week-day'); weekLink.href = `#${root.id}`; weekLink.dataset.date = date;
+    weekLink.setAttribute('aria-label', `Previsione del ${dateLabel(date)}`);
+    const weekDate = el('span', 'week-date');
+    weekDate.append(el('span', 'week-weekday', weekday.slice(0, 3)), el('span', 'week-number', String(localDate.getUTCDate())));
+    const weekWeather = el('span', 'week-condition');
+    const weekTemperature = el('span', 'week-temperatures');
+    weekLink.append(weekDate, weekWeather, weekTemperature);
+    const header = el('div', 'day-header');
+    const title = el('h3', 'day-title', weekday);
+    title.append(el('span', 'day-date', calendarDate));
+    const weather = el('div', 'day-condition');
+    const temperature = el('div', 'temperatures');
+    header.append(title, weather, temperature);
+    const extremes = el('p', 'hint extremes');
+    const forecast = el('p', 'forecast');
+    const coverageNote = el('p', 'hint coverage-note');
+    const secondary = el('div', 'day-secondary');
+    const astroSummary = el('p', 'astro-summary hint');
+    const copy = el('button', 'copy', 'Copia'); copy.type = 'button';
+    copy.setAttribute('aria-label', `Copia previsione del ${dateLabel(date)}`);
+    secondary.append(astroSummary, copy);
+    const copyStatus = el('p', 'hint copy-status'); copyStatus.setAttribute('role', 'status');
+    const fallbackLabel = el('label', 'hint', 'Seleziona e copia il testo:');
+    const fallback = el('textarea', 'copy-fallback'); fallback.readOnly = true;
+    fallback.id = `copy-${date}`; fallbackLabel.htmlFor = fallback.id;
+    fallback.hidden = fallbackLabel.hidden = true;
+    const details = el('details', 'hourly'); details.dataset.date = date;
+    const summary = el('summary', '', 'Dettagli orari');
+    const content = el('div', 'day-details');
+    const astro = el('section', 'astronomy');
+    astro.setAttribute('aria-label', `Astronomia del ${dateLabel(date)}`);
+    const note = el('p', 'hint hourly-note', 'Probabilità di precipitazione: intervallo statistico non documentato. — indica un dato assente.');
+    note.id = `hourly-note-${date}`;
+    const wrapper = el('div', 'table'); wrapper.tabIndex = 0;
+    wrapper.setAttribute('role', 'region'); wrapper.setAttribute('aria-label', `Tabella oraria del ${dateLabel(date)}`);
+    wrapper.setAttribute('aria-describedby', note.id);
+    const table = el('table');
+    const caption = el('caption', 'sr-only', `Previsioni orarie del ${dateLabel(date)}`);
+    const thead = el('thead'), tr = el('tr');
+    const headings = ['Ora locale', 'Meteo', 'Temp °C', 'Prob. precip. %', 'Umidità %', 'Pressione hPa', 'Vento km/h', 'Direzione °', 'Onde m', 'Periodo s', 'Dir. onde °', 'Beaufort'];
+    headings.forEach((label, i) => { const th = el('th', i >= 8 ? `marine-cell${i === 8 ? ' marine-start' : ''}` : '', label); th.scope = 'col'; tr.append(th); });
+    thead.append(tr);
+    const tbody = el('tbody'); table.append(caption, thead, tbody); wrapper.append(table);
+    const marineState = el('p', 'hint marine-state');
+    const coverageDetails = el('div', 'coverage-details'); coverageDetails.append(extremes, coverageNote);
+    content.append(coverageDetails, astro, wrapper, note, marineState); details.append(summary, content);
+    root.append(header, forecast, secondary, copyStatus, fallbackLabel, fallback, details);
+    const card = { date, root, weekLink, weekWeather, weekTemperature, weather, temperature, extremes, coverageNote, forecast, astroSummary, astro, tbody, wrapper, table, details, marineState, copy, copyStatus, fallback, fallbackLabel, rows: [] };
+    card.sync = () => {
+        const width = tr.firstElementChild.getBoundingClientRect().width;
+        if (width > 0) wrapper.style.setProperty('--hour-col-width', `${width}px`);
+    };
+    details.addEventListener('toggle', card.sync);
+    if (typeof ResizeObserver !== 'undefined') { card.observer = new ResizeObserver(card.sync); card.observer.observe(wrapper); card.observer.observe(tr.firstElementChild); }
+    copy.addEventListener('click', async () => {
+        const snapshot = activeSnapshot;
+        const text = `${snapshot.location.name} · ${dateLabel(date)} · ${levels[verbosity]}\n${renderForecast(activeSnapshot.forecast?.get(date), { verbosity, includeTemperature: true })}`;
+        try {
+            if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+            await navigator.clipboard.writeText(text);
+            if (activeSnapshot !== snapshot || !root.isConnected) return;
+            setText(copyStatus, 'Previsione copiata.');
+            fallback.hidden = fallbackLabel.hidden = true;
+        } catch {
+            if (activeSnapshot !== snapshot || !root.isConnected) return;
+            setText(copyStatus, 'Copia automatica non disponibile. Il testo è pronto per la copia manuale.');
+            fallback.value = text; fallback.hidden = fallbackLabel.hidden = false;
+            fallback.focus(); fallback.select();
+        }
+    });
+    return card;
+}
+function updateAtmosphere(card, day) {
+    card.weather.replaceChildren(condition(day.icon));
+    const reading = (label, n, className) => {
+        const node = el('span', `temperature-reading ${className}`);
+        node.append(el('span', 'temperature-label', label), el('strong', 'temperature-value', value(n, '°')));
+        return node;
+    };
+    card.temperature.replaceChildren(reading('Max', day.max, 'temperature-high'), reading('Min', day.min, 'temperature-low'));
+    if (day.sampledExtremes) card.temperature.append(el('span', 'temperature-qualifier', 'Estremi parziali'));
+    card.weekWeather.replaceChildren(condition(day.icon));
+    card.weekLink.setAttribute('aria-label', `${dateLabel(day.date)}: ${icon(day.icon)[1]}, massima ${value(day.max, ' °C')}, minima ${value(day.min, ' °C')}${day.sampledExtremes ? ', estremi parziali' : ''}`);
+    const weekMax = el('span', 'week-high', value(day.max, '°')); weekMax.setAttribute('aria-label', `Massima ${value(day.max, ' °C')}`);
+    const weekMin = el('span', 'week-low', value(day.min, '°')); weekMin.setAttribute('aria-label', `Minima ${value(day.min, ' °C')}`);
+    card.weekTemperature.replaceChildren(weekMax, weekMin);
+    if (day.sampledExtremes) card.weekTemperature.append(el('span', 'week-qualifier', 'Parziali'));
+    setText(card.extremes, day.sampledExtremes ? 'Estremi parziali della temperatura' : 'Estremi giornalieri del provider');
+    updateText(card);
+    const coverage = activeSnapshot.forecast?.get(day.date)?.facts.find(f => f.category === 'coverage');
+    card.coverageNote.hidden = !coverage?.partial && !coverage?.gaps.length;
+    const localClock = time => time == null ? '—' : new Date(time).toLocaleTimeString('it-IT', { timeZone: activeSnapshot.location.tz, hour: '2-digit', minute: '2-digit' });
+    setText(card.coverageNote, `${coverage?.partial ? 'Copertura parziale · ' : ''}${localClock(coverage?.start)}–${localClock(coverage?.end)}${coverage?.gaps.length ? ' · intervalli senza dati' : ''}`);
+    card.rows = day.hours.map(h => {
+        const tr = el('tr');
+        [clock(h.time), null, value(h.temp, '', 1), value(h.probability), value(h.humidity), value(h.pressure, '', 1), value(h.windSpeed, '', 1), direction(h.windDir)].forEach((text, i) => {
+            const td = el('td', i === 2 ? 'temp' : i === 3 ? 'rain' : '', text);
+            if (i === 1) { const [emoji, label] = icon(h.icon); td.append(el('span', 'weather-symbol', emoji), el('span', 'sr-only', label)); }
+            tr.append(td);
+        });
+        const marine = Array.from({ length: 4 }, (_, i) => el('td', `marine-cell${i === 0 ? ' marine-start' : ''}`, '—'));
+        tr.append(...marine);
+        return { time: h.time, node: tr, marine };
+    });
+    card.tbody.replaceChildren(...card.rows.map(r => r.node));
+    requestAnimationFrame(card.sync);
+}
+function updateAstronomy(card, snapshot) {
+    const sun = snapshot.astronomy?.get(card.date), tz = snapshot.location.tz;
+    if (!sun) {
+        card.sun = null; card.dismissTwilight = null;
+        const text = `Sole e Luna: ${snapshot.astronomyStatus ?? 'caricamento…'}`;
+        setText(card.astroSummary, ''); setText(card.astro, text); return;
+    }
+    const solarClock = time => time == null ? '—' : new Date(time).toLocaleTimeString('it-IT', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+    setText(card.astroSummary, `Alba ${solarClock(sun.sunrise)} · Tramonto ${solarClock(sun.sunset)} · ${sun.phase[0]}`);
+    card.astroSummary.setAttribute('aria-label', `Alba ${solarClock(sun.sunrise)}, tramonto ${solarClock(sun.sunset)}, ${sun.phase[1]}`);
+    if (card.sun === sun) return;
+    card.sun = sun;
+    const heading = el('h4', '', 'Sole e Luna');
+    const header = el('div', 'astronomy-header');
+    const readings = el('div', 'astro-grid');
+    const solar = el('dl', 'astro-times solar-readings');
+    for (const [label, reading] of [
+        ['Alba', clock(sun.sunrise)], ['Tramonto', clock(sun.sunset)]
+    ]) {
+        const item = el('div', 'astro-reading');
+        const readingValue = el('dd', '', reading);
+        item.append(el('dt', '', label), readingValue); solar.append(item);
+    }
+    const lunar = el('section', 'lunar-reading'); lunar.setAttribute('aria-label', 'Luna');
+    const phase = el('div', 'lunar-phase');
+    const phaseDescription = el('div', 'lunar-phase-description');
+    const illumination = el('span', 'lunar-percentage', value(sun.illumination, '%', 1));
+    illumination.setAttribute('aria-label', `Illuminazione lunare: ${value(sun.illumination, '%', 1)}`);
+    phaseDescription.append(el('span', 'lunar-phase-name', sun.phase[1]), illumination);
+    phase.append(el('span', 'lunar-phase-symbol', sun.phase[0]), phaseDescription);
+    const lunarTimes = el('dl', 'astro-times lunar-times');
+    for (const [label, time] of [['Levata Luna', sun.moonrise], ['Tramonto Luna', sun.moonset]]) {
+        const item = el('div', 'astro-reading');
+        item.append(el('dt', '', label), el('dd', '', clock(time))); lunarTimes.append(item);
+    }
+    lunar.append(el('h5', 'lunar-title', 'Fase lunare'), phase, lunarTimes); readings.append(solar, lunar);
+    const info = el('div', 'twilight-info');
+    const trigger = el('button', 'twilight-trigger', 'Crepuscoli ⓘ'); trigger.type = 'button';
+    const tooltip = el('div', 'twilight-tooltip'); tooltip.id = `twilight-${card.date}`; tooltip.hidden = true;
+    tooltip.setAttribute('role', 'tooltip');
+    trigger.setAttribute('aria-describedby', tooltip.id); trigger.setAttribute('aria-controls', tooltip.id);
+    trigger.setAttribute('aria-expanded', 'false');
+    const twilight = el('dl', 'twilight');
+    for (const [label, key] of [['Civile', 'civil_twilight'], ['Nautico', 'nautical_twilight'], ['Astronomico', 'astronomical_twilight']]) {
+        const times = el('dd');
+        times.append(el('span', '', `Mattino ${clock(sun[`${key}_begin`])}`), el('span', '', `Sera ${clock(sun[`${key}_end`])}`));
+        twilight.append(el('dt', '', label), times);
+    }
+    tooltip.append(twilight); info.append(trigger, tooltip); header.append(heading, info);
+    let pinned = false;
+    const show = open => {
+        tooltip.hidden = !open; trigger.setAttribute('aria-expanded', String(open));
+        if (open) tooltip.classList.toggle('above', trigger.getBoundingClientRect().bottom + tooltip.offsetHeight > window.innerHeight - 8);
+    };
+    card.dismissTwilight = target => { if (!info.contains(target)) { pinned = false; show(false); } };
+    info.addEventListener('pointerenter', event => { if (event.pointerType !== 'touch') show(true); });
+    info.addEventListener('pointerleave', () => { if (!pinned && document.activeElement !== trigger) show(false); });
+    trigger.addEventListener('focus', () => show(true));
+    trigger.addEventListener('blur', () => { pinned = false; show(false); });
+    trigger.addEventListener('click', () => { pinned = !pinned; show(pinned); });
+    trigger.addEventListener('keydown', event => { if (event.key === 'Escape') { pinned = false; show(false); } });
+    card.astro.replaceChildren(header, readings);
+}
+function updateMarine(card, snapshot) {
+    const hasMarine = snapshot.marine?.size > 0;
+    for (const node of card.table.querySelectorAll('.marine-cell')) node.hidden = !hasMarine;
+    for (const row of card.rows) {
+        const wave = snapshot.marine?.get(row.time);
+        [value(wave?.height, '', 1), value(wave?.period, '', 1), direction(wave?.direction), value(wave?.beaufort)].forEach((text, i) => setText(row.marine[i], text));
+    }
+    setText(card.marineState, `Mare: ${snapshot.marineStatus ?? 'caricamento…'}`);
+}
+export function render(snapshot) {
+    const atmosphericChange = lastHours !== snapshot.hours;
+    activeSnapshot = snapshot;
+    const { days, hours } = snapshot.visible;
+    if (atmosphericChange) {
+        displayTimes = timeDisplay(hours.length ? hours : [{ time: snapshot.fetchedAt }], snapshot.location.tz);
+        setText($('loc'), snapshot.location.name);
+        setText($('sel'), `${snapshot.location.lat.toFixed(3)}, ${snapshot.location.lon.toFixed(3)}${snapshot.elevation == null ? '' : ` · ${value(snapshot.elevation, ' m s.l.m.')}`}`);
+        setText($('time-zone'), displayTimes.description);
+        const runs = Object.entries(snapshot.models).map(([model, run]) => `${model}: ${run}`).join(' · ');
+        setText($('when'), `Acquisizione: ${timestamp(snapshot.fetchedAt)}${runs ? ` · Run ${runs}` : ''}`);
+        const dates = new Set(days.map(d => d.date));
+        const rangeDate = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('it-IT', { timeZone: 'UTC', day: 'numeric', month: 'long' });
+        const firstDate = days[0]?.date, lastDate = days.at(-1)?.date;
+        setText($('forecast-range'), !days.length ? '' : firstDate === lastDate ? rangeDate(firstDate) : `${firstDate.slice(0, 7) === lastDate.slice(0, 7) ? Number(firstDate.slice(-2)) : rangeDate(firstDate)} – ${rangeDate(lastDate)}`);
+        for (const [name, limit] of [['week-days', 7], ['week-tablet-days', 4], ['week-mobile-days', 3]])
+            $('week').style.setProperty(`--${name}`, Math.max(1, Math.min(limit, days.length)));
+        for (const [date, card] of cards) if (!dates.has(date)) { card.observer?.disconnect(); card.root.remove(); card.weekLink.remove(); cards.delete(date); }
+        for (const [index, day] of days.entries()) {
+            let card = cards.get(day.date);
+            if (!card) { card = createCard(day.date); cards.set(day.date, card); $('days').append(card.root); $('week').append(card.weekLink); }
+            const current = $('days').children[index];
+            if (current !== card.root) $('days').insertBefore(card.root, current ?? null);
+            const currentWeek = $('week').children[index];
+            if (currentWeek !== card.weekLink) $('week').insertBefore(card.weekLink, currentWeek ?? null);
+            updateAtmosphere(card, day);
+            card.sun = null;
+            card.fallback.hidden = card.fallbackLabel.hidden = true; setText(card.copyStatus, '');
+        }
+        $('forecast-empty').hidden = days.length > 0;
+        $('verbosity').disabled = days.length === 0;
+        document.querySelector('.chart-section').hidden = !hours.length;
+        renderChart(snapshot);
+        lastHours = snapshot.hours;
+    }
+    for (const card of cards.values()) {
+        updateAstronomy(card, snapshot);
+        updateMarine(card, snapshot);
+    }
+    setText($('sources'), `Mare: ${snapshot.marineStatus ?? 'caricamento…'} · Sole e Luna: ${snapshot.astronomyStatus ?? 'caricamento…'}`);
+    const coverages = days.map(day => snapshot.forecast.get(day.date)).map(s => s.facts.find(f => f.category === 'coverage'));
+    setText($('coverage'), hours.length ? coverages.some(c => c?.partial || c?.gaps.length) ? 'Copertura atmosferica parziale: consulta i periodi disponibili nelle schede.' : 'Campioni atmosferici disponibili per le date mostrate.' : 'Copertura insufficiente per la vista giornaliera.');
+    if (snapshot.visible.excluded) setText($('coverage'), `${$('coverage').textContent} Giorno finale incompleto escluso.`);
+}
+function chartPalette() {
+    const css = getComputedStyle(document.documentElement);
+    return Object.fromEntries(['text', 'muted', 'accent', 'temperature', 'border', 'surface-raised', 'chart-grid'].map(key => [key, css.getPropertyValue(`--${key}`).trim()]));
+}
+document.addEventListener('41weather:themechange', () => {
+    if (!chart) return;
+    const colors = chartPalette();
+    chart.data.datasets.forEach((dataset, i) => { dataset.borderColor = dataset.backgroundColor = i ? colors.accent : colors.temperature; });
+    chart.options.plugins.legend.labels.color = colors.text;
+    Object.assign(chart.options.plugins.tooltip, { backgroundColor: colors['surface-raised'], titleColor: colors.text, bodyColor: colors.text, borderColor: colors.border });
+    for (const [name, scale] of Object.entries(chart.options.scales)) {
+        const color = name === 'temperature' ? colors.temperature : name === 'probability' ? colors.accent : colors.muted;
+        scale.ticks.color = color;
+        scale.grid.color = colors['chart-grid'];
+        scale.border.color = colors.border;
+        if (scale.title) scale.title.color = color;
+    }
+    chart.update('none');
+});
 function renderChart(snapshot) {
-    chart?.destroy();
-    if (typeof Chart === 'undefined') { status('Grafico non disponibile: impossibile caricare Chart.js', true); return; }
+    chart?.destroy(); chart = undefined;
+    const hours = snapshot.visible.hours;
+    if (!hours.length) return;
+    if (typeof Chart === 'undefined') { setText($('chart-state'), 'Grafico non disponibile. Consulta le tabelle orarie.'); return; }
+    setText($('chart-state'), '');
     const tz = snapshot.location.tz;
-    const points = field => snapshot.hours.map(h => ({ x: h.time, y: h[field] }));
+    const axisStamp = time => new Date(time).toLocaleString('it-IT', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const tickTimes = [...new Set(Array.from({ length: 5 }, (_, i) => hours[Math.round(i * (hours.length - 1) / 4)].time))];
+    const gaps = new Set([...(snapshot.forecast?.values() ?? [])].flatMap(s => s.diagnostics.gaps));
+    const points = field => hours.flatMap((h, i, all) => [
+        ...(i && (gaps.has(h.time) || h.time - all[i - 1].time > 10800000) ? [{ x: all[i - 1].time + 1, y: null }] : []), { x: h.time, y: h[field] }
+    ]);
+    const colors = chartPalette();
     chart = new Chart($('chart'), {
         type: 'line', data: { datasets: [
-            { label: 'Temperatura °C', data: points('temp'), borderColor: '#ffcc66', yAxisID: 'temperature', tension: 0, pointRadius: 0, spanGaps: false },
-            { label: 'Probabilità precipitazione %', data: points('probability'), borderColor: '#6aa6ff', yAxisID: 'probability', tension: 0, pointRadius: 0, spanGaps: false }
+            { label: 'Temperatura °C', data: points('temp'), borderColor: colors.temperature, backgroundColor: colors.temperature, yAxisID: 'temperature', tension: 0, pointRadius: 2, spanGaps: false },
+            { label: 'Probabilità precipitazione %', data: points('probability'), borderColor: colors.accent, backgroundColor: colors.accent, borderDash: [5, 3], yAxisID: 'probability', stepped: 'after', pointRadius: 2, spanGaps: false }
         ] },
         options: { responsive: true, maintainAspectRatio: false, parsing: false, interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { labels: { color: '#e9eef7' } }, tooltip: { callbacks: { title: items => timestamp(items[0].parsed.x, tz) } } },
-            scales: { x: { type: 'linear', ticks: { color: '#a9b6cc', maxTicksLimit: 5, callback: n => timestamp(n, tz) } },
-                temperature: { position: 'left', title: { display: true, text: '°C' }, ticks: { color: '#ffcc66' } },
-                probability: { position: 'right', min: 0, max: 100, title: { display: true, text: '%' }, ticks: { color: '#6aa6ff' }, grid: { drawOnChartArea: false } } }
+            plugins: { legend: { labels: { color: colors.text, boxWidth: 16 } }, tooltip: { backgroundColor: colors['surface-raised'], titleColor: colors.text, bodyColor: colors.text, borderColor: colors.border, borderWidth: 1, callbacks: { title: items => timestamp(items[0].parsed.x) } } },
+            scales: { x: { grid: { color: colors['chart-grid'] }, border: { color: colors.border }, type: 'linear', min: hours[0].time, max: hours.at(-1).time, afterBuildTicks: axis => { axis.ticks = tickTimes.map(value => ({ value })); }, ticks: { color: colors.muted, maxTicksLimit: 5, callback: n => axisStamp(n) } },
+                temperature: { grid: { color: colors['chart-grid'] }, border: { color: colors.border }, position: 'left', title: { display: true, text: '°C', color: colors.temperature }, ticks: { color: colors.temperature } },
+                probability: { border: { color: colors.border }, position: 'right', min: 0, max: 100, title: { display: true, text: '%', color: colors.accent }, ticks: { color: colors.accent }, grid: { drawOnChartArea: false, color: colors['chart-grid'] } } }
         }
     });
 }
